@@ -4,7 +4,7 @@ Prototipo MVP de chat institucional para una entidad publica colombiana. Busca
 proveer una alternativa controlada a servicios externos tipo tawk.to, con
 trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 
-> Estado: fase 03 - ciclo de vida minimo de conversacion. No apto para
+> Estado: fase 04 - fundacion local de acceso de consola. No apto para
 > produccion.
 
 ## Alcance actual
@@ -16,11 +16,12 @@ trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 - Conversaciones persistidas con estados `Pending`, `Active` y `Closed`.
 - Reanudacion de conversacion activa en el widget mediante `sessionStorage`.
 - Cierre desde consola, notificacion realtime y bloqueo de nuevos mensajes.
+- Acceso local de desarrollo para consola de agentes con token opaco temporal.
 - Auditoria minima: inicio, mensajes, activacion y cierre.
 
 ## Fuera de alcance
 
-- Autenticacion real.
+- Autenticacion institucional real.
 - IA, RAG, resumenes o bots.
 - Adjuntos.
 - Departamentos, transferencia o asignacion explicita de agente.
@@ -46,6 +47,10 @@ Servicios:
 | Consola | `http://localhost:5173` |
 | Widget demo | `http://localhost:5174` |
 | PostgreSQL | `localhost:5433`, db `andje_chat` |
+
+La consola local usa el codigo de desarrollo `andje-agent-local` cuando se
+ejecuta con Docker Compose. Este valor es solo para demo local; en un entorno
+compartido use `.env` y reemplacelo por un valor no versionado.
 
 Detener:
 
@@ -99,6 +104,7 @@ conversacion activa tras recargar. Esto es conveniencia local, no seguridad.
 - [Modelo de dominio](docs/domain-model.md)
 - [Persistencia y auditoria](docs/persistence-audit.md)
 - [Prueba manual realtime](docs/manual-test-realtime.md)
+- [Fundacion de acceso de consola](docs/security-access-foundation.md)
 - [Linea base de seguridad y privacidad](docs/privacy-security-baseline.md)
 - [ADR 0001 - Arquitectura inicial](docs/adr/0001-architecture.md)
 

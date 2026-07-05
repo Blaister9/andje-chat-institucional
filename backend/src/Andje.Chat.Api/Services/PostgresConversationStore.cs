@@ -73,6 +73,7 @@ public sealed class PostgresConversationStore(ChatDbContext db) : IConversationS
 
     public async Task<AppendMessageResult?> AppendMessageAsync(
         Guid conversationId, SenderType senderType, string body,
+        AgentActor? agentActor = null,
         CancellationToken cancellationToken = default)
     {
         var conversation = await db.Conversations
@@ -100,9 +101,17 @@ public sealed class PostgresConversationStore(ChatDbContext db) : IConversationS
 
         var actor = senderType.ToString();
         // Auditoría con referencias (ids), nunca con el contenido del mensaje.
+        object auditData = senderType == SenderType.Agent
+            ? new
+            {
+                messageId = message.Id,
+                agentSessionId = agentActor?.SessionId,
+                agentDisplayName = agentActor?.DisplayName,
+            }
+            : new { messageId = message.Id };
         db.AuditEvents.Add(AuditEvent.For(
             $"message.sent.{actor.ToLowerInvariant()}", actor, conversationId,
-            new { messageId = message.Id }));
+            auditData));
 
         var statusChanged = false;
         if (senderType == SenderType.Agent && conversation.Status == ConversationStatus.Pending)
@@ -111,7 +120,12 @@ public sealed class PostgresConversationStore(ChatDbContext db) : IConversationS
             statusChanged = true;
             db.AuditEvents.Add(AuditEvent.For(
                 "conversation.activated", actor, conversationId,
-                new { messageId = message.Id }));
+                new
+                {
+                    messageId = message.Id,
+                    agentSessionId = agentActor?.SessionId,
+                    agentDisplayName = agentActor?.DisplayName,
+                }));
         }
 
         conversation.UpdatedAtUtc = now;
@@ -121,7 +135,8 @@ public sealed class PostgresConversationStore(ChatDbContext db) : IConversationS
     }
 
     public async Task<ConversationDto?> CloseConversationAsync(
-        Guid conversationId, CancellationToken cancellationToken = default)
+        Guid conversationId, AgentActor agentActor,
+        CancellationToken cancellationToken = default)
     {
         var conversation = await db.Conversations
             .FirstOrDefaultAsync(c => c.Id == conversationId, cancellationToken);
@@ -141,7 +156,12 @@ public sealed class PostgresConversationStore(ChatDbContext db) : IConversationS
         conversation.UpdatedAtUtc = now;
 
         db.AuditEvents.Add(AuditEvent.For(
-            "conversation.closed", nameof(SenderType.Agent), conversationId));
+            "conversation.closed", nameof(SenderType.Agent), conversationId,
+            new
+            {
+                agentSessionId = agentActor.SessionId,
+                agentDisplayName = agentActor.DisplayName,
+            }));
 
         await db.SaveChangesAsync(cancellationToken);
         return conversation.ToDto();

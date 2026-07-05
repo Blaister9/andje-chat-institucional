@@ -4,11 +4,19 @@ import {
   LogLevel,
 } from '@microsoft/signalr';
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { ChatMessageDto, ConversationDto } from './types';
+import { AgentSessionDto, ChatMessageDto, ConversationDto } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+const TOKEN_KEY = 'andje-chat.agent.accessToken';
+const DISPLAY_NAME_KEY = 'andje-chat.agent.displayName';
+const EXPIRES_AT_KEY = 'andje-chat.agent.expiresAtUtc';
 
 type ConnectionStatus = 'conectando' | 'conectado' | 'desconectado';
+type AgentSession = {
+  accessToken: string;
+  agentDisplayName: string;
+  expiresAtUtc: string;
+};
 
 function appendUnique(
   byConversation: Record<string, ChatMessageDto[]>,
@@ -31,8 +39,40 @@ function statusLabel(status: ConversationDto['status']): string {
   return 'Cerrada';
 }
 
+function readStoredSession(): AgentSession | null {
+  const accessToken = sessionStorage.getItem(TOKEN_KEY);
+  const agentDisplayName = sessionStorage.getItem(DISPLAY_NAME_KEY);
+  const expiresAtUtc = sessionStorage.getItem(EXPIRES_AT_KEY);
+  if (!accessToken || !agentDisplayName || !expiresAtUtc) {
+    clearStoredSession();
+    return null;
+  }
+
+  if (Date.parse(expiresAtUtc) <= Date.now()) {
+    clearStoredSession();
+    return null;
+  }
+
+  return { accessToken, agentDisplayName, expiresAtUtc };
+}
+
+function storeSession(session: AgentSession): void {
+  sessionStorage.setItem(TOKEN_KEY, session.accessToken);
+  sessionStorage.setItem(DISPLAY_NAME_KEY, session.agentDisplayName);
+  sessionStorage.setItem(EXPIRES_AT_KEY, session.expiresAtUtc);
+}
+
+function clearStoredSession(): void {
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(DISPLAY_NAME_KEY);
+  sessionStorage.removeItem(EXPIRES_AT_KEY);
+}
+
 export function App() {
-  const [status, setStatus] = useState<ConnectionStatus>('conectando');
+  const [agentSession, setAgentSession] = useState<AgentSession | null>(() => readStoredSession());
+  const [status, setStatus] = useState<ConnectionStatus>(
+    agentSession ? 'conectando' : 'desconectado',
+  );
   const [conversations, setConversations] = useState<ConversationDto[]>([]);
   const [messagesByConversation, setMessagesByConversation] = useState<
     Record<string, ChatMessageDto[]>
@@ -42,6 +82,10 @@ export function App() {
   const [draft, setDraft] = useState('');
   const [sendError, setSendError] = useState('');
   const [showClosed, setShowClosed] = useState(false);
+  const [loginName, setLoginName] = useState('');
+  const [loginCode, setLoginCode] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginSubmitting, setLoginSubmitting] = useState(false);
 
   const connectionRef = useRef<HubConnection | null>(null);
   const selectedIdRef = useRef<string | null>(null);
@@ -49,8 +93,26 @@ export function App() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (!agentSession) {
+      setStatus('desconectado');
+      return;
+    }
+
+    const expireSession = (message = 'La sesion de agente expiro o no es valida.') => {
+      clearStoredSession();
+      setAgentSession(null);
+      setLoginError(message);
+      setConversations([]);
+      setMessagesByConversation({});
+      setUnread({});
+      setSelectedId(null);
+      setStatus('desconectado');
+    };
+
     const connection = new HubConnectionBuilder()
-      .withUrl(`${API_BASE}/hubs/chat`)
+      .withUrl(`${API_BASE}/hubs/chat`, {
+        accessTokenFactory: () => agentSession.accessToken,
+      })
       .withAutomaticReconnect()
       .configureLogging(LogLevel.Warning)
       .build();
@@ -96,27 +158,78 @@ export function App() {
         .then((list) => {
           setConversations(list);
           setStatus('conectado');
-        });
+          setLoginError('');
+        })
+        .catch(() => expireSession());
 
     connection.onreconnecting(() => setStatus('desconectado'));
     connection.onreconnected(() => {
-      void joinConsole().catch(() => setStatus('desconectado'));
+      void joinConsole();
     });
 
     connection
       .start()
       .then(joinConsole)
-      .catch(() => setStatus('desconectado'));
+      .catch(() => expireSession());
 
     return () => {
       connectionRef.current = null;
       void connection.stop();
     };
-  }, []);
+  }, [agentSession]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: 'end' });
   }, [messagesByConversation, selectedId]);
+
+  async function submitLogin(event: FormEvent) {
+    event.preventDefault();
+    setLoginSubmitting(true);
+    setLoginError('');
+    try {
+      const response = await fetch(`${API_BASE}/api/agent-sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          displayName: loginName,
+          accessCode: loginCode,
+        }),
+      });
+
+      if (!response.ok) {
+        setLoginError('Codigo de acceso invalido.');
+        return;
+      }
+
+      const session = (await response.json()) as AgentSessionDto;
+      const nextSession = {
+        accessToken: session.accessToken,
+        agentDisplayName: session.agentDisplayName,
+        expiresAtUtc: session.expiresAtUtc,
+      };
+      storeSession(nextSession);
+      setAgentSession(nextSession);
+      setLoginCode('');
+    } catch {
+      setLoginError('No fue posible iniciar sesion de agente.');
+    } finally {
+      setLoginSubmitting(false);
+    }
+  }
+
+  function logout() {
+    clearStoredSession();
+    setAgentSession(null);
+    setConversations([]);
+    setMessagesByConversation({});
+    setUnread({});
+    setSelectedId(null);
+    setDraft('');
+    setSendError('');
+    setLoginError('');
+    setStatus('desconectado');
+    void connectionRef.current?.stop();
+  }
 
   async function selectConversation(id: string) {
     setSelectedId(id);
@@ -161,6 +274,11 @@ export function App() {
       setDraft('');
       setSendError('');
     } catch (error) {
+      if (String(error).includes('Agent session')) {
+        logout();
+        setLoginError('La sesion de agente expiro o no es valida.');
+        return;
+      }
       if (String(error).includes('Conversation is closed')) {
         setConversations((prev) =>
           prev.map((conversation) =>
@@ -197,9 +315,51 @@ export function App() {
       );
       setDraft('');
       setSendError('La conversacion fue cerrada.');
-    } catch {
+    } catch (error) {
+      if (String(error).includes('Agent session')) {
+        logout();
+        setLoginError('La sesion de agente expiro o no es valida.');
+        return;
+      }
       setSendError('No fue posible cerrar la conversacion.');
     }
+  }
+
+  if (!agentSession) {
+    return (
+      <main className="access-page">
+        <form className="access-card" onSubmit={(event) => void submitLogin(event)}>
+          <h1>Acceso consola de agentes</h1>
+          <label>
+            Nombre del agente
+            <input
+              type="text"
+              maxLength={80}
+              autoComplete="off"
+              value={loginName}
+              onChange={(event) => setLoginName(event.target.value)}
+              placeholder="Agente QA"
+            />
+          </label>
+          <label>
+            Codigo de acceso
+            <input
+              type="password"
+              autoComplete="off"
+              value={loginCode}
+              onChange={(event) => setLoginCode(event.target.value)}
+            />
+          </label>
+          <button type="submit" disabled={loginSubmitting}>
+            {loginSubmitting ? 'Ingresando...' : 'Ingresar'}
+          </button>
+          {loginError && <p className="error">{loginError}</p>}
+          <p className="access-note">
+            Acceso local de desarrollo. No es autenticacion institucional.
+          </p>
+        </form>
+      </main>
+    );
   }
 
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
@@ -216,7 +376,9 @@ export function App() {
       <header className="header">
         <h1>Consola de agentes</h1>
         <span className="subtitle">Chat institucional - ANDJE</span>
+        <span className="agent-name">{agentSession.agentDisplayName}</span>
         <span className={`estado-conexion ${status}`}>{status}</span>
+        <button type="button" className="logout" onClick={logout}>Salir</button>
       </header>
 
       <main className="panels">
@@ -324,7 +486,7 @@ export function App() {
       </main>
 
       <footer className="footer">
-        Prototipo interno - fase 03: ciclo de vida minimo de conversacion.
+        Prototipo interno - fase 04: acceso local de desarrollo para consola.
         No apto para produccion.
       </footer>
     </div>

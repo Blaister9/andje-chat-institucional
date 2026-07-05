@@ -14,3 +14,9 @@ export interface ChatMessageDto {
   content: string;
   sentAt: string;
 }
+
+export interface AgentSessionDto {
+  accessToken: string;
+  agentDisplayName: string;
+  expiresAtUtc: string;
+}

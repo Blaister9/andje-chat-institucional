@@ -77,6 +77,7 @@ public sealed class InMemoryConversationStore : IConversationStore
 
     public Task<AppendMessageResult?> AppendMessageAsync(
         Guid conversationId, SenderType senderType, string body,
+        AgentActor? agentActor = null,
         CancellationToken cancellationToken = default)
     {
         if (!_conversations.TryGetValue(conversationId, out var entry))
@@ -121,7 +122,8 @@ public sealed class InMemoryConversationStore : IConversationStore
     }
 
     public Task<ConversationDto?> CloseConversationAsync(
-        Guid conversationId, CancellationToken cancellationToken = default)
+        Guid conversationId, AgentActor agentActor,
+        CancellationToken cancellationToken = default)
     {
         if (!_conversations.TryGetValue(conversationId, out var entry))
         {
