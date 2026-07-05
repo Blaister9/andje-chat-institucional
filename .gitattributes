@@ -1,0 +1,10 @@
+# Normalizar a LF en el repositorio (los scripts .sh y los contenedores
+# Linux requieren LF).
+* text=auto eol=lf
+
+# Scripts de PowerShell funcionan con cualquier fin de línea; se mantienen LF.
+*.ps1 text eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary

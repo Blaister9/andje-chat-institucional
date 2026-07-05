@@ -1,0 +1,17 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# Node / frontend
+node_modules/
+dist/
+*.local
+
+# Entorno local
+.env
+
+# IDE / herramientas locales
+.idea/
+.claude/

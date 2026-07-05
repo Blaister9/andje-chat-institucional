@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Demo — Widget de chat institucional ANDJE</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        background: #f4f6f8;
+        color: #1f2933;
+      }
+      main {
+        max-width: 640px;
+        margin: 4rem auto;
+        padding: 0 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Página de ejemplo de la entidad</h1>
+      <p>
+        Esta página simula el portal institucional donde se embebe el widget de
+        chat. El botón flotante de la esquina inferior derecha es el Web
+        Component <code>&lt;andje-chat-widget&gt;</code>.
+      </p>
+    </main>
+
+    <andje-chat-widget titulo="Chat institucional ANDJE"></andje-chat-widget>
+
+    <script type="module" src="/src/andje-chat-widget.ts"></script>
+  </body>
+</html>
