@@ -10,6 +10,9 @@ public sealed class AgentSessionService(
     TimeProvider timeProvider) : IAgentSessionService
 {
     private const int MaxDisplayNameLength = 80;
+    // Cota superior defensiva: un codigo legitimo es corto; nada mas largo se
+    // compara para no gastar trabajo con payloads abusivos.
+    private const int MaxAccessCodeLength = 256;
     private readonly ConcurrentDictionary<string, AgentSession> _sessions = new();
 
     public CreateAgentSessionResponse CreateSession(CreateAgentSessionRequest request)
@@ -27,6 +30,7 @@ public sealed class AgentSessionService(
         }
 
         if (string.IsNullOrWhiteSpace(request.AccessCode) ||
+            request.AccessCode.Length > MaxAccessCodeLength ||
             !AccessCodeMatches(configuredCode, request.AccessCode))
         {
             throw new AgentSessionRejectedException("Invalid access code.");

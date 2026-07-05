@@ -4,8 +4,9 @@ Prototipo MVP de chat institucional para una entidad publica colombiana. Busca
 proveer una alternativa controlada a servicios externos tipo tawk.to, con
 trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 
-> Estado: fase 06 - hardening de dependencias y secret scanning. No apto para
-> produccion.
+> Estado: fase 07 - endurecimiento de seguridad y privacidad tecnica. Base
+> tecnica preliminar, alineada con buenas practicas y pendiente de revision
+> juridica y de seguridad institucional. No apto para produccion.
 
 ## Alcance actual
 
@@ -18,6 +19,8 @@ trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 - Cierre desde consola, notificacion realtime y bloqueo de nuevos mensajes.
 - Acceso local de desarrollo para consola de agentes con token opaco temporal.
 - Auditoria minima: inicio, mensajes, activacion y cierre.
+- Controles de seguridad tecnica: headers HTTP, CORS explicito, rate limiting
+  del acceso de agente, limites de payload y validacion de configuracion insegura.
 - CI con pruebas PostgreSQL obligatorias, auditorias de dependencias y Gitleaks.
 
 ## Fuera de alcance
@@ -117,6 +120,7 @@ conversacion activa tras recargar. Esto es conveniencia local, no seguridad.
 - [Persistencia y auditoria](docs/persistence-audit.md)
 - [Prueba manual realtime](docs/manual-test-realtime.md)
 - [Fundacion de acceso de consola](docs/security-access-foundation.md)
+- [Endurecimiento de seguridad y privacidad](docs/security-privacy-hardening.md)
 - [CI y quality gates](docs/ci-quality-gates.md)
 - [Dependency and secret hardening](docs/dependency-secret-hardening.md)
 - [Linea base de seguridad y privacidad](docs/privacy-security-baseline.md)

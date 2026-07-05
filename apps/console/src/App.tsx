@@ -196,6 +196,11 @@ export function App() {
         }),
       });
 
+      if (response.status === 429) {
+        setLoginError('Demasiados intentos. Espere un momento e intente de nuevo.');
+        return;
+      }
+
       if (!response.ok) {
         setLoginError('Codigo de acceso invalido.');
         return;
