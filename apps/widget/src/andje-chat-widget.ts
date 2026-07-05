@@ -1,12 +1,8 @@
 /**
  * Web Component embebible del chat institucional.
  *
- * Fase 01: flujo real de mensajería vía SignalR, sin persistencia (el
- * backend guarda las conversaciones en memoria).
- *
- * Uso en un portal externo:
- *   <script src="https://<host>/andje-chat-widget.js"></script>
- *   <andje-chat-widget titulo="Chat institucional" api-base="https://<api>"></andje-chat-widget>
+ * Fase 03: mensajeria realtime persistida, reanudacion con sessionStorage y
+ * cierre de conversacion notificado por SignalR.
  */
 import {
   HubConnection,
@@ -16,9 +12,11 @@ import {
 
 interface ConversationDto {
   id: string;
-  status: string;
+  status: 'Pending' | 'Active' | 'Closed';
   visitorDisplayName: string | null;
   startedAt: string;
+  updatedAtUtc: string;
+  closedAtUtc: string | null;
 }
 
 interface ChatMessageDto {
@@ -28,6 +26,10 @@ interface ChatMessageDto {
   content: string;
   sentAt: string;
 }
+
+const STORAGE_KEY = 'andje-chat.conversationId';
+const CLOSED_TEXT =
+  'Esta conversacion fue cerrada por el equipo de atencion. Si necesitas realizar una nueva consulta, inicia un nuevo chat.';
 
 export class AndjeChatWidget extends HTMLElement {
   static readonly tagName = 'andje-chat-widget';
@@ -44,6 +46,8 @@ export class AndjeChatWidget extends HTMLElement {
   #listaMensajes!: HTMLDivElement;
   #formularioMensaje!: HTMLFormElement;
   #campoMensaje!: HTMLInputElement;
+  #botonEnviar!: HTMLButtonElement;
+  #botonNuevaConversacion!: HTMLButtonElement;
   #lineaEstado!: HTMLParagraphElement;
 
   get #apiBase(): string {
@@ -109,7 +113,7 @@ export class AndjeChatWidget extends HTMLElement {
           border-radius: 6px;
           font: inherit;
         }
-        .inicio button, .envio button {
+        .inicio button, .envio button, .nueva-conversacion {
           border: none;
           border-radius: 6px;
           background: #10316b;
@@ -119,7 +123,10 @@ export class AndjeChatWidget extends HTMLElement {
           padding: 0.5rem 0.9rem;
         }
         .inicio button { margin-top: 0.6rem; width: 100%; }
-        .inicio button:disabled, .envio button:disabled { opacity: 0.6; cursor: default; }
+        .inicio button:disabled, .envio button:disabled, .envio input:disabled {
+          opacity: 0.6;
+          cursor: default;
+        }
         .chat { display: none; }
         .chat.activo { display: block; }
         .mensajes {
@@ -162,6 +169,12 @@ export class AndjeChatWidget extends HTMLElement {
           min-height: 1em;
         }
         .estado.error { color: #ab091e; }
+        .nueva-conversacion {
+          display: none;
+          width: 100%;
+          margin-top: 0.6rem;
+        }
+        .nueva-conversacion.visible { display: block; }
       </style>
       <div class="panel" role="dialog" aria-label="${titulo}">
         <div class="encabezado">${titulo}</div>
@@ -169,21 +182,22 @@ export class AndjeChatWidget extends HTMLElement {
           <form class="inicio">
             <label for="nombre">Nombre (opcional)</label>
             <input id="nombre" name="nombre" type="text" maxlength="80"
-                   autocomplete="off" placeholder="¿Cómo quiere que le llamemos?" />
+                   autocomplete="off" placeholder="Como quiere que le llamemos?" />
             <button type="submit">Iniciar chat</button>
           </form>
           <div class="chat">
             <div class="mensajes" aria-live="polite"></div>
             <form class="envio">
               <input name="mensaje" type="text" maxlength="2000" autocomplete="off"
-                     placeholder="Escriba su mensaje…" aria-label="Mensaje" />
+                     placeholder="Escriba su mensaje..." aria-label="Mensaje" />
               <button type="submit">Enviar</button>
             </form>
+            <button class="nueva-conversacion" type="button">Nueva conversacion</button>
           </div>
           <p class="estado"></p>
         </div>
       </div>
-      <button class="boton" type="button" aria-label="Abrir chat" aria-expanded="false">💬</button>
+      <button class="boton" type="button" aria-label="Abrir chat" aria-expanded="false">Chat</button>
     `;
 
     this.#panel = shadow.querySelector<HTMLDivElement>('.panel')!;
@@ -193,6 +207,8 @@ export class AndjeChatWidget extends HTMLElement {
     this.#listaMensajes = shadow.querySelector<HTMLDivElement>('.mensajes')!;
     this.#formularioMensaje = shadow.querySelector<HTMLFormElement>('.envio')!;
     this.#campoMensaje = this.#formularioMensaje.querySelector<HTMLInputElement>('input')!;
+    this.#botonEnviar = this.#formularioMensaje.querySelector<HTMLButtonElement>('button')!;
+    this.#botonNuevaConversacion = shadow.querySelector<HTMLButtonElement>('.nueva-conversacion')!;
     this.#lineaEstado = shadow.querySelector<HTMLParagraphElement>('.estado')!;
 
     this.#boton.addEventListener('click', () => this.#alternar());
@@ -204,6 +220,9 @@ export class AndjeChatWidget extends HTMLElement {
       e.preventDefault();
       void this.#enviarMensaje();
     });
+    this.#botonNuevaConversacion.addEventListener('click', () => this.#reiniciarConversacion());
+
+    void this.#reanudarConversacion();
   }
 
   disconnectedCallback(): void {
@@ -214,6 +233,12 @@ export class AndjeChatWidget extends HTMLElement {
     this.#abierto = !this.#abierto;
     this.#panel.classList.toggle('abierto', this.#abierto);
     this.#boton.setAttribute('aria-expanded', String(this.#abierto));
+  }
+
+  #abrir(): void {
+    this.#abierto = true;
+    this.#panel.classList.add('abierto');
+    this.#boton.setAttribute('aria-expanded', 'true');
   }
 
   async #conectar(): Promise<HubConnection> {
@@ -233,7 +258,14 @@ export class AndjeChatWidget extends HTMLElement {
       }
     });
 
-    conexion.onreconnecting(() => this.#estado('Reconectando…'));
+    conexion.on('ConversationClosed', (conversation: ConversationDto) => {
+      if (conversation.id === this.#conversacion?.id) {
+        this.#conversacion = conversation;
+        this.#aplicarEstadoConversacion();
+      }
+    });
+
+    conexion.onreconnecting(() => this.#estado('Reconectando...'));
     conexion.onreconnected(() => {
       this.#estado('');
       void this.#repintarHistorial();
@@ -244,10 +276,37 @@ export class AndjeChatWidget extends HTMLElement {
     return conexion;
   }
 
+  async #reanudarConversacion(): Promise<void> {
+    const conversationId = sessionStorage.getItem(STORAGE_KEY);
+    if (!conversationId) {
+      return;
+    }
+
+    this.#estado('Recuperando conversacion...');
+    try {
+      const conexion = await this.#conectar();
+      const [historial, conversation] = await Promise.all([
+        conexion.invoke<ChatMessageDto[]>('JoinConversation', conversationId),
+        conexion.invoke<ConversationDto>('GetConversation', conversationId),
+      ]);
+      this.#conversacion = conversation;
+      this.#mostrarChat();
+      this.#listaMensajes.replaceChildren();
+      this.#mensajesPintados.clear();
+      historial.forEach((m) => this.#pintarMensaje(m));
+      this.#aplicarEstadoConversacion();
+      this.#abrir();
+    } catch {
+      sessionStorage.removeItem(STORAGE_KEY);
+      this.#reiniciarConversacion(false);
+      this.#estado('No fue posible recuperar la conversacion anterior. Puedes iniciar una nueva.', true);
+    }
+  }
+
   async #iniciarConversacion(): Promise<void> {
     const boton = this.#vistaInicio.querySelector('button')!;
     boton.disabled = true;
-    this.#estado('Conectando…');
+    this.#estado('Conectando...');
     try {
       const conexion = await this.#conectar();
       const nombre =
@@ -255,9 +314,11 @@ export class AndjeChatWidget extends HTMLElement {
       this.#conversacion = await conexion.invoke<ConversationDto>('StartConversation', {
         displayName: nombre,
       });
-      this.#vistaInicio.style.display = 'none';
-      this.#vistaChat.classList.add('activo');
-      this.#estado('');
+      sessionStorage.setItem(STORAGE_KEY, this.#conversacion.id);
+      this.#listaMensajes.replaceChildren();
+      this.#mensajesPintados.clear();
+      this.#mostrarChat();
+      this.#aplicarEstadoConversacion();
       this.#campoMensaje.focus();
     } catch {
       this.#estado('No fue posible conectar con el chat. Intente de nuevo.', true);
@@ -268,18 +329,27 @@ export class AndjeChatWidget extends HTMLElement {
 
   async #enviarMensaje(): Promise<void> {
     const contenido = this.#campoMensaje.value.trim();
-    if (!contenido || !this.#conexion || !this.#conversacion) {
+    if (
+      !contenido ||
+      !this.#conexion ||
+      !this.#conversacion ||
+      this.#conversacion.status === 'Closed'
+    ) {
       return;
     }
     try {
-      // El mensaje se pinta cuando el servidor lo confirma (eco del grupo).
       await this.#conexion.invoke('SendVisitorMessage', {
         conversationId: this.#conversacion.id,
         content: contenido,
       });
       this.#campoMensaje.value = '';
       this.#estado('');
-    } catch {
+    } catch (error) {
+      if (String(error).includes('Conversation is closed')) {
+        this.#conversacion = { ...this.#conversacion, status: 'Closed', closedAtUtc: new Date().toISOString() };
+        this.#aplicarEstadoConversacion();
+        return;
+      }
       this.#estado('El mensaje no pudo enviarse.', true);
     }
   }
@@ -288,13 +358,46 @@ export class AndjeChatWidget extends HTMLElement {
     if (!this.#conexion || !this.#conversacion) {
       return;
     }
-    const historial = await this.#conexion.invoke<ChatMessageDto[]>(
-      'JoinConversation',
-      this.#conversacion.id,
-    );
+    const [historial, conversation] = await Promise.all([
+      this.#conexion.invoke<ChatMessageDto[]>('JoinConversation', this.#conversacion.id),
+      this.#conexion.invoke<ConversationDto>('GetConversation', this.#conversacion.id),
+    ]);
+    this.#conversacion = conversation;
     this.#listaMensajes.replaceChildren();
     this.#mensajesPintados.clear();
     historial.forEach((m) => this.#pintarMensaje(m));
+    this.#aplicarEstadoConversacion();
+  }
+
+  #mostrarChat(): void {
+    this.#vistaInicio.style.display = 'none';
+    this.#vistaChat.classList.add('activo');
+  }
+
+  #reiniciarConversacion(limpiarEstado = true): void {
+    sessionStorage.removeItem(STORAGE_KEY);
+    this.#conversacion = null;
+    this.#mensajesPintados.clear();
+    this.#listaMensajes.replaceChildren();
+    this.#vistaInicio.style.display = 'block';
+    this.#vistaChat.classList.remove('activo');
+    this.#campoMensaje.value = '';
+    this.#campoMensaje.disabled = false;
+    this.#botonEnviar.disabled = false;
+    this.#formularioMensaje.style.display = 'flex';
+    this.#botonNuevaConversacion.classList.remove('visible');
+    if (limpiarEstado) {
+      this.#estado('');
+    }
+  }
+
+  #aplicarEstadoConversacion(): void {
+    const cerrada = this.#conversacion?.status === 'Closed';
+    this.#campoMensaje.disabled = cerrada;
+    this.#botonEnviar.disabled = cerrada;
+    this.#formularioMensaje.style.display = cerrada ? 'none' : 'flex';
+    this.#botonNuevaConversacion.classList.toggle('visible', cerrada);
+    this.#estado(cerrada ? CLOSED_TEXT : '');
   }
 
   #pintarMensaje(mensaje: ChatMessageDto): void {
@@ -305,7 +408,6 @@ export class AndjeChatWidget extends HTMLElement {
 
     const burbuja = document.createElement('div');
     burbuja.className = `mensaje ${mensaje.senderType.toLowerCase()}`;
-    // textContent (nunca innerHTML): el contenido es entrada no confiable.
     burbuja.textContent = mensaje.content;
     this.#listaMensajes.appendChild(burbuja);
     this.#listaMensajes.scrollTop = this.#listaMensajes.scrollHeight;

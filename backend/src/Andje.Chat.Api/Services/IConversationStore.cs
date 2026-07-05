@@ -16,6 +16,10 @@ public interface IConversationStore
     Task<IReadOnlyList<ConversationDto>> GetConversationsAsync(
         CancellationToken cancellationToken = default);
 
+    /// <returns>La conversación, o null si no existe.</returns>
+    Task<ConversationDto?> GetConversationAsync(
+        Guid conversationId, CancellationToken cancellationToken = default);
+
     /// <returns>Los mensajes en orden cronológico, o null si la conversación no existe.</returns>
     Task<IReadOnlyList<ChatMessageDto>?> GetMessagesAsync(
         Guid conversationId, CancellationToken cancellationToken = default);
@@ -23,6 +27,12 @@ public interface IConversationStore
     /// <returns>El resultado del envío, o null si la conversación no existe.</returns>
     Task<AppendMessageResult?> AppendMessageAsync(
         Guid conversationId, SenderType senderType, string body,
+        AgentActor? agentActor = null,
+        CancellationToken cancellationToken = default);
+
+    /// <returns>La conversación cerrada, o null si no existe.</returns>
+    Task<ConversationDto?> CloseConversationAsync(
+        Guid conversationId, AgentActor agentActor,
         CancellationToken cancellationToken = default);
 }
 
@@ -31,3 +41,10 @@ public sealed record AppendMessageResult(
     ChatMessageDto Message,
     ConversationDto Conversation,
     bool StatusChanged);
+
+public sealed class ConversationClosedException : InvalidOperationException
+{
+    public ConversationClosedException() : base("Conversation is closed.")
+    {
+    }
+}

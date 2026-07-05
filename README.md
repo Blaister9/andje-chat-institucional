@@ -1,162 +1,125 @@
 # Chat institucional ANDJE
 
-Prototipo MVP de chat institucional para una entidad pública colombiana,
-pensado para reemplazar soluciones externas tipo tawk.to con una alternativa
-bajo control institucional: trazabilidad, privacidad, auditoría y preparación
-para IA asistida en fases futuras.
+Prototipo MVP de chat institucional para una entidad publica colombiana. Busca
+proveer una alternativa controlada a servicios externos tipo tawk.to, con
+trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 
-> **Estado:** fase 02 — mensajería en tiempo real con persistencia en
-> PostgreSQL y auditoría mínima. No apto para producción.
+> Estado: fase 04 - fundacion local de acceso de consola. No apto para
+> produccion.
 
-## Visión
+## Alcance actual
 
-Un ciudadano que visita el portal de la entidad abre un widget de chat
-embebido y conversa en tiempo real con un agente interno, que atiende desde
-una consola propia. Toda conversación queda registrada y auditable dentro de
-la infraestructura de la entidad, sin depender de servicios de chat de
-terceros.
+- Backend .NET 8 Web API + SignalR.
+- PostgreSQL 16 con EF Core + Npgsql.
+- Widget publico como Web Component TypeScript.
+- Consola interna React + Vite + TypeScript.
+- Conversaciones persistidas con estados `Pending`, `Active` y `Closed`.
+- Reanudacion de conversacion activa en el widget mediante `sessionStorage`.
+- Cierre desde consola, notificacion realtime y bloqueo de nuevos mensajes.
+- Acceso local de desarrollo para consola de agentes con token opaco temporal.
+- Auditoria minima: inicio, mensajes, activacion y cierre.
 
-## Alcance del MVP
+## Fuera de alcance
 
-- Widget de chat embebible en portales de la entidad (Web Component).
-- Consola interna para agentes (React).
-- Mensajería en tiempo real ciudadano ↔ agente (SignalR).
-- Persistencia y trazabilidad de conversaciones (PostgreSQL).
-- Auditoría básica de eventos (quién atendió, cuándo, qué pasó).
+- Autenticacion institucional real.
+- IA, RAG, resumenes o bots.
+- Adjuntos.
+- Departamentos, transferencia o asignacion explicita de agente.
+- Metricas, dashboard administrativo o reporterias.
+- Retencion automatica y anonimizacion automatica.
+- Despliegue productivo o alta disponibilidad.
 
-## Fuera de alcance (por ahora)
+## Ejecutar localmente
 
-- IA asistida (sugerencias de respuesta, resúmenes, bots). La arquitectura la
-  contempla, pero no se implementa en el MVP.
-- Integración con sistemas externos de la entidad (PQRSD, CRM, mesa de ayuda).
-- Autenticación de ciudadanos (el visitante es anónimo con datos mínimos).
-- Despliegue a producción, alta disponibilidad y escalamiento horizontal.
-- Notificaciones por correo, encuestas de satisfacción, reportería avanzada.
+Requisitos: Docker Desktop. Para desarrollo directo: .NET SDK 8+ y Node.js 20+.
 
-## Arquitectura
-
-Monorepo con tres aplicaciones y una base de datos:
-
-```
-andje-chat-institucional/
-├── backend/                  # .NET 8 Web API + SignalR
-│   ├── Andje.Chat.sln
-│   ├── src/Andje.Chat.Api/   # API, hub de chat (/hubs/chat), /health
-│   └── tests/Andje.Chat.Api.Tests/  # Smoke tests (xUnit)
-├── apps/
-│   ├── console/              # Consola de agentes (React + Vite + TS)
-│   └── widget/               # Widget embebible (Web Component, Vite + TS)
-├── docs/
-│   ├── adr/                  # Decisiones de arquitectura
-│   ├── domain-model.md       # Modelo de dominio
-│   └── privacy-security-baseline.md
-├── scripts/                  # Arranque/parada del entorno local
-└── docker-compose.yml        # Orquestación local (db + api + frontends)
-```
-
-Decisiones clave y su justificación: ver [docs/adr/0001-architecture.md](docs/adr/0001-architecture.md).
-Resumen: **React** para la consola (curva de entrada baja, ecosistema amplio,
-coherencia con el enfoque de componentes del widget) y **PostgreSQL** como base
-de datos (sin costos de licenciamiento para la entidad, primera clase en
-Docker, JSONB para metadatos de mensajes).
-
-## Cómo ejecutar localmente
-
-Requisitos: Docker (Desktop en Windows). Para desarrollo fuera de contenedores:
-.NET SDK 8+ y Node.js 20+.
-
-### Opción 1 — todo con Docker (comando único)
-
-```bash
+```powershell
 docker compose up --build -d
-# o, equivalente:
-./scripts/dev-up.sh        # Linux/macOS
-.\scripts\dev-up.ps1       # Windows
+curl.exe -s http://localhost:8080/health
 ```
 
-Servicios levantados:
+Servicios:
 
-| Servicio            | URL                                  |
-| ------------------- | ------------------------------------ |
-| API — healthcheck   | http://localhost:8080/health         |
-| Hub SignalR         | http://localhost:8080/hubs/chat      |
-| Consola de agentes  | http://localhost:5173                |
-| Demo del widget     | http://localhost:5174                |
-| PostgreSQL          | localhost:5433 (db `andje_chat`)     |
+| Servicio | URL |
+| --- | --- |
+| API health | `http://localhost:8080/health` |
+| Hub SignalR | `http://localhost:8080/hubs/chat` |
+| Consola | `http://localhost:5173` |
+| Widget demo | `http://localhost:5174` |
+| PostgreSQL | `localhost:5433`, db `andje_chat` |
 
-El esquema de base de datos se crea solo: la API aplica las migraciones de EF
-Core al arrancar. PostgreSQL se publica en el puerto **5433** del host para no
-chocar con instalaciones locales (configurable con `ANDJE_DB_PORT`).
+La consola local usa el codigo de desarrollo `andje-agent-local` cuando se
+ejecuta con Docker Compose. Este valor es solo para demo local; en un entorno
+compartido use `.env` y reemplacelo por un valor no versionado.
 
-Para detener: `docker compose down` (o `scripts/dev-down.*`).
+Detener:
 
-### Opción 2 — desarrollo directo en la máquina
+```powershell
+docker compose down
+```
 
-```bash
-# Base de datos
+## Desarrollo local
+
+```powershell
 docker compose up -d db
-
-# API (puerto 8080)
 dotnet run --project backend/src/Andje.Chat.Api
 
-# Consola (puerto 5173)
-cd apps/console && npm install && npm run dev
+cd apps/console
+npm install
+npm run dev
 
-# Widget (puerto 5174, página demo con el widget embebido)
-cd apps/widget && npm install && npm run dev
+cd ../widget
+npm install
+npm run dev
 ```
 
-### Pruebas
+## Pruebas y builds
 
-```bash
-docker compose up -d db   # requerido por las pruebas de persistencia
+```powershell
+docker compose up -d db
 dotnet test backend/Andje.Chat.sln
+
+cd apps/console
+npm ci
+npm run build
+
+cd ../widget
+npm ci
+npm run build
+
+cd ../..
+docker compose config -q
 ```
 
-Las pruebas del flujo realtime y de humo corren contra un store en memoria
-(sin Docker). Las de persistencia corren contra PostgreSQL real (base
-`andje_chat_test`, recreada en cada ejecución); si la base no está disponible
-se omiten con un aviso en lugar de fallar.
+Las pruebas de persistencia usan PostgreSQL real en `localhost:5433` y la base
+`andje_chat_test`. Si la DB no esta disponible, esas pruebas se omiten con
+aviso; con `docker compose up -d db` deben ejecutarse.
 
-### Compilar los frontends
+En CI se define `ANDJE_REQUIRE_POSTGRES_TESTS=true`, por lo que las pruebas de
+PostgreSQL fallan si la base no esta disponible. Los valores usados por CI son
+dev/test, no secretos institucionales.
 
-```bash
-cd apps/console && npm run build
-cd apps/widget && npm run build   # genera dist/andje-chat-widget.js (IIFE embebible)
-```
-
-## Cómo se embebe el widget
-
-El widget es un Web Component autocontenido. Un portal externo lo integra con
-dos líneas, sin dependencias de framework:
+## Widget embebible
 
 ```html
-<script src="https://<host-de-la-entidad>/andje-chat-widget.js"></script>
-<andje-chat-widget titulo="Chat institucional"></andje-chat-widget>
+<script src="https://<host>/andje-chat-widget.js"></script>
+<andje-chat-widget titulo="Chat institucional" api-base="https://<api>"></andje-chat-widget>
 ```
 
-## Configuración y secretos
+El widget guarda solo el `conversationId` en `sessionStorage` para reanudar una
+conversacion activa tras recargar. Esto es conveniencia local, no seguridad.
 
-- No hay secretos en el repositorio. La única credencial local es la
-  contraseña de PostgreSQL de desarrollo, con valor por defecto en
-  `docker-compose.yml` y sobreescribible vía `.env` (ver
-  [.env.example](.env.example)).
-- Los orígenes permitidos por CORS se configuran en
-  `backend/src/Andje.Chat.Api/appsettings.json` (`Cors:AllowedOrigins`).
+## Documentacion
 
-## Documentación
-
-- [ADR 0001 — Arquitectura inicial](docs/adr/0001-architecture.md)
 - [Modelo de dominio](docs/domain-model.md)
-- [Persistencia y auditoría](docs/persistence-audit.md)
-- [Línea base de seguridad y privacidad](docs/privacy-security-baseline.md)
-- [Prueba manual del flujo en tiempo real](docs/manual-test-realtime.md)
+- [Persistencia y auditoria](docs/persistence-audit.md)
+- [Prueba manual realtime](docs/manual-test-realtime.md)
+- [Fundacion de acceso de consola](docs/security-access-foundation.md)
+- [CI y quality gates](docs/ci-quality-gates.md)
+- [Linea base de seguridad y privacidad](docs/privacy-security-baseline.md)
+- [ADR 0001 - Arquitectura inicial](docs/adr/0001-architecture.md)
 
 ## Flujo de trabajo
 
-- No se trabaja directamente sobre `main` ni `develop`; todo cambio entra por
-  rama `feat/*` y pull request.
-- Fase actual: `feat/02-persistence-audit-foundation` — conversaciones,
-  mensajes y auditoría persistidos en PostgreSQL detrás de
-  `IConversationStore`. Siguiente fase sugerida: cierre de conversaciones y
-  reanudación de sesión del visitante.
+No se trabaja directamente sobre `main` ni `develop`. Cada microfase entra por
+rama `feat/*` y pull request.

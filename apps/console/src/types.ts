@@ -1,8 +1,10 @@
 export interface ConversationDto {
   id: string;
-  status: 'Pending' | 'Active';
+  status: 'Pending' | 'Active' | 'Closed';
   visitorDisplayName: string | null;
   startedAt: string;
+  updatedAtUtc: string;
+  closedAtUtc: string | null;
 }
 
 export interface ChatMessageDto {
@@ -11,4 +13,10 @@ export interface ChatMessageDto {
   senderType: 'Visitor' | 'Agent';
   content: string;
   sentAt: string;
+}
+
+export interface AgentSessionDto {
+  accessToken: string;
+  agentDisplayName: string;
+  expiresAtUtc: string;
 }
