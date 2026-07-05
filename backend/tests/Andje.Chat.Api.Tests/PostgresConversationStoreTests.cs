@@ -1,0 +1,169 @@
+using Andje.Chat.Api.Data;
+using Andje.Chat.Api.Domain;
+using Andje.Chat.Api.Services;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+
+namespace Andje.Chat.Api.Tests;
+
+/// <summary>
+/// Pruebas de integración contra PostgreSQL real (base de datos
+/// andje_chat_test). Requieren el contenedor de docker-compose:
+///   docker compose up -d db
+/// Si PostgreSQL no está disponible se omiten (Skip) con un aviso.
+/// </summary>
+public sealed class PostgresFixture : IAsyncLifetime
+{
+    public bool Available { get; private set; }
+    public string SkipReason { get; private set; }
+
+    public DbContextOptions<ChatDbContext> Options { get; }
+
+    public PostgresFixture()
+    {
+        var password = Environment.GetEnvironmentVariable("ANDJE_DB_PASSWORD") ?? "andje_dev_local";
+        var port = Environment.GetEnvironmentVariable("ANDJE_DB_PORT") ?? "5433";
+        SkipReason =
+            $"PostgreSQL no está disponible en localhost:{port}. Ejecute 'docker compose up -d db'.";
+        Options = new DbContextOptionsBuilder<ChatDbContext>()
+            .UseNpgsql($"Host=localhost;Port={port};Database=andje_chat_test;Username=andje;Password={password};Timeout=3")
+            .Options;
+    }
+
+    public async Task InitializeAsync()
+    {
+        try
+        {
+            // Base de pruebas recreada desde cero: valida que la migración
+            // sea aplicable de forma reproducible.
+            await using var db = new ChatDbContext(Options);
+            await db.Database.EnsureDeletedAsync();
+            await db.Database.MigrateAsync();
+            Available = true;
+        }
+        catch (Exception ex) when (ex is NpgsqlException or InvalidOperationException or TimeoutException)
+        {
+            Available = false;
+            SkipReason = $"{SkipReason} Detalle: {ex.GetBaseException().Message}";
+        }
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
+}
+
+public class PostgresConversationStoreTests(PostgresFixture fixture) : IClassFixture<PostgresFixture>
+{
+    private ChatDbContext CreateContext() => new(fixture.Options);
+
+    [SkippableFact]
+    public async Task Iniciar_conversacion_persiste_fila_y_auditoria()
+    {
+        Skip.IfNot(fixture.Available, fixture.SkipReason);
+
+        await using var db = CreateContext();
+        var dto = await new PostgresConversationStore(db).StartConversationAsync("Prueba");
+
+        await using var verify = CreateContext();
+        var conversation = await verify.Conversations.SingleAsync(c => c.Id == dto.Id);
+        Assert.Equal(ConversationStatus.Pending, conversation.Status);
+        Assert.Equal("Prueba", conversation.VisitorDisplayName);
+        Assert.Null(conversation.ClosedAtUtc);
+
+        var audit = await verify.AuditEvents.SingleAsync(
+            a => a.ConversationId == dto.Id && a.EventType == "conversation.started");
+        Assert.Equal("Visitor", audit.ActorType);
+    }
+
+    [SkippableFact]
+    public async Task Mensaje_de_visitante_se_persiste_con_auditoria_sin_contenido()
+    {
+        Skip.IfNot(fixture.Available, fixture.SkipReason);
+
+        await using var db = CreateContext();
+        var store = new PostgresConversationStore(db);
+        var dto = await store.StartConversationAsync(null);
+        var result = await store.AppendMessageAsync(dto.Id, SenderType.Visitor, "Texto confidencial del ciudadano");
+
+        Assert.NotNull(result);
+        Assert.False(result.StatusChanged);
+
+        await using var verify = CreateContext();
+        var message = await verify.Messages.SingleAsync(m => m.ConversationId == dto.Id);
+        Assert.Equal("Texto confidencial del ciudadano", message.Body);
+        Assert.Equal(SenderType.Visitor, message.SenderType);
+
+        var audit = await verify.AuditEvents.SingleAsync(
+            a => a.ConversationId == dto.Id && a.EventType == "message.sent.visitor");
+        // La auditoría referencia el mensaje por id pero nunca su contenido.
+        Assert.Contains(message.Id.ToString(), audit.DataJson);
+        Assert.DoesNotContain("confidencial", audit.DataJson);
+    }
+
+    [SkippableFact]
+    public async Task Primera_respuesta_del_agente_activa_la_conversacion_con_auditoria()
+    {
+        Skip.IfNot(fixture.Available, fixture.SkipReason);
+
+        await using var db = CreateContext();
+        var store = new PostgresConversationStore(db);
+        var dto = await store.StartConversationAsync(null);
+
+        var result = await store.AppendMessageAsync(dto.Id, SenderType.Agent, "Respuesta");
+        Assert.NotNull(result);
+        Assert.True(result.StatusChanged);
+        Assert.Equal("Active", result.Conversation.Status);
+
+        // Una segunda respuesta ya no cambia el estado.
+        var second = await store.AppendMessageAsync(dto.Id, SenderType.Agent, "Otra respuesta");
+        Assert.False(second!.StatusChanged);
+
+        await using var verify = CreateContext();
+        var conversation = await verify.Conversations.SingleAsync(c => c.Id == dto.Id);
+        Assert.Equal(ConversationStatus.Active, conversation.Status);
+        Assert.True(conversation.UpdatedAtUtc >= conversation.CreatedAtUtc);
+
+        Assert.Equal(1, await verify.AuditEvents.CountAsync(
+            a => a.ConversationId == dto.Id && a.EventType == "conversation.activated"));
+        Assert.Equal(2, await verify.AuditEvents.CountAsync(
+            a => a.ConversationId == dto.Id && a.EventType == "message.sent.agent"));
+    }
+
+    [SkippableFact]
+    public async Task Los_datos_sobreviven_a_un_reinicio_simulado_del_proceso()
+    {
+        Skip.IfNot(fixture.Available, fixture.SkipReason);
+
+        Guid conversationId;
+        await using (var db = CreateContext())
+        {
+            var store = new PostgresConversationStore(db);
+            var dto = await store.StartConversationAsync("Persistente");
+            conversationId = dto.Id;
+            await store.AppendMessageAsync(conversationId, SenderType.Visitor, "Mensaje que debe sobrevivir");
+        }
+
+        // Contexto y store nuevos = proceso nuevo desde el punto de vista del dominio.
+        await using var freshDb = CreateContext();
+        var freshStore = new PostgresConversationStore(freshDb);
+
+        var conversations = await freshStore.GetConversationsAsync();
+        Assert.Contains(conversations, c => c.Id == conversationId);
+
+        var messages = await freshStore.GetMessagesAsync(conversationId);
+        Assert.NotNull(messages);
+        var message = Assert.Single(messages);
+        Assert.Equal("Mensaje que debe sobrevivir", message.Content);
+    }
+
+    [SkippableFact]
+    public async Task Conversacion_inexistente_devuelve_null()
+    {
+        Skip.IfNot(fixture.Available, fixture.SkipReason);
+
+        await using var db = CreateContext();
+        var store = new PostgresConversationStore(db);
+
+        Assert.Null(await store.GetMessagesAsync(Guid.NewGuid()));
+        Assert.Null(await store.AppendMessageAsync(Guid.NewGuid(), SenderType.Visitor, "Hola"));
+    }
+}

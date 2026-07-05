@@ -5,7 +5,8 @@ pensado para reemplazar soluciones externas tipo tawk.to con una alternativa
 bajo control institucional: trazabilidad, privacidad, auditoría y preparación
 para IA asistida en fases futuras.
 
-> **Estado:** fase 00 — fundación del proyecto. No apto para producción.
+> **Estado:** fase 02 — mensajería en tiempo real con persistencia en
+> PostgreSQL y auditoría mínima. No apto para producción.
 
 ## Visión
 
@@ -81,7 +82,11 @@ Servicios levantados:
 | Hub SignalR         | http://localhost:8080/hubs/chat      |
 | Consola de agentes  | http://localhost:5173                |
 | Demo del widget     | http://localhost:5174                |
-| PostgreSQL          | localhost:5432 (db `andje_chat`)     |
+| PostgreSQL          | localhost:5433 (db `andje_chat`)     |
+
+El esquema de base de datos se crea solo: la API aplica las migraciones de EF
+Core al arrancar. PostgreSQL se publica en el puerto **5433** del host para no
+chocar con instalaciones locales (configurable con `ANDJE_DB_PORT`).
 
 Para detener: `docker compose down` (o `scripts/dev-down.*`).
 
@@ -104,11 +109,14 @@ cd apps/widget && npm install && npm run dev
 ### Pruebas
 
 ```bash
+docker compose up -d db   # requerido por las pruebas de persistencia
 dotnet test backend/Andje.Chat.sln
 ```
 
-Los smoke tests verifican que `/health` responde `200 Healthy` y que el hub
-SignalR `/hubs/chat` acepta conexiones y responde a `Ping`.
+Las pruebas del flujo realtime y de humo corren contra un store en memoria
+(sin Docker). Las de persistencia corren contra PostgreSQL real (base
+`andje_chat_test`, recreada en cada ejecución); si la base no está disponible
+se omiten con un aviso en lugar de fallar.
 
 ### Compilar los frontends
 
@@ -140,11 +148,15 @@ dos líneas, sin dependencias de framework:
 
 - [ADR 0001 — Arquitectura inicial](docs/adr/0001-architecture.md)
 - [Modelo de dominio](docs/domain-model.md)
+- [Persistencia y auditoría](docs/persistence-audit.md)
 - [Línea base de seguridad y privacidad](docs/privacy-security-baseline.md)
+- [Prueba manual del flujo en tiempo real](docs/manual-test-realtime.md)
 
 ## Flujo de trabajo
 
 - No se trabaja directamente sobre `main` ni `develop`; todo cambio entra por
   rama `feat/*` y pull request.
-- Fase actual: `feat/00-project-foundation`. Siguiente fase sugerida:
-  persistencia (EF Core + migraciones) y mensajería básica por SignalR.
+- Fase actual: `feat/02-persistence-audit-foundation` — conversaciones,
+  mensajes y auditoría persistidos en PostgreSQL detrás de
+  `IConversationStore`. Siguiente fase sugerida: cierre de conversaciones y
+  reanudación de sesión del visitante.
