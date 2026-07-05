@@ -1,80 +1,81 @@
-# Prueba manual — flujo de chat en tiempo real (fase 01)
+# Prueba manual - realtime y ciclo de vida
 
-Verifica el flujo completo visitante ↔ agente sin persistencia. Duración
-aproximada: 5 minutos.
+Verifica el flujo fase 03: inicio, mensajes, reanudacion tras recarga, cierre,
+bloqueo de mensajes y evidencia en PostgreSQL.
 
-## Requisitos
+## Preparacion
 
-- Docker en ejecución.
-- Puertos libres: 8080 (API), 5173 (consola), 5174 (widget), 5433 (Postgres).
-
-## Preparación
-
-```bash
+```powershell
 docker compose up --build -d
+curl.exe -s http://localhost:8080/health
 ```
 
-Esperar a que los cuatro contenedores estén arriba (la consola y el widget
-tardan ~30 s adicionales por el `npm install` interno). Verificar:
+URLs:
 
-1. `http://localhost:8080/health` responde `Healthy`.
-2. `http://localhost:5173` muestra la consola con el estado **conectado**
-   (esquina superior derecha) y el mensaje "Sin conversaciones".
-3. `http://localhost:5174` muestra la página demo con el botón flotante 💬.
+- Consola: `http://localhost:5173`
+- Widget demo: `http://localhost:5174`
+- API health: `http://localhost:8080/health`
 
-## Prueba paso a paso
+## Flujo manual
 
-Abrir dos ventanas del navegador lado a lado: **A** = consola (5173),
-**B** = widget demo (5174). No refrescar ninguna durante la prueba.
+1. Abrir widget demo.
+2. Abrir el panel del widget.
+3. Iniciar conversacion con un nombre de prueba no sensible, por ejemplo `Laura`.
+4. Enviar desde widget: `Hola, necesito orientacion general`.
+5. Abrir consola.
+6. Confirmar que la conversacion aparece en cola sin refrescar.
+7. Seleccionar la conversacion.
+8. Responder desde consola: `Hola, con gusto te orientamos.`
+9. Confirmar que el widget recibe la respuesta sin refrescar.
+10. Recargar la pagina del widget.
+11. Confirmar que el widget recupera la misma conversacion y el historial.
+12. Cerrar la conversacion desde consola con `Cerrar conversacion`.
+13. Confirmar que el widget muestra el mensaje institucional de cierre sin refrescar.
+14. Confirmar que el input del widget queda bloqueado.
+15. Confirmar que la cola de consola oculta la conversacion cerrada por defecto.
+16. Activar `Ver cerradas` y confirmar que la conversacion cerrada aparece.
+17. Usar `Nueva conversacion` en el widget y confirmar que vuelve al formulario inicial.
+18. Revisar DevTools en consola y widget: no deben existir errores salvo desconexiones
+    esperadas durante reinicios deliberados.
 
-| # | Acción | Resultado esperado |
-|---|--------|--------------------|
-| 1 | En **B**, clic en el botón 💬 | Se abre el panel con el campo "Nombre (opcional)" |
-| 2 | En **B**, escribir un nombre (p. ej. `María`) y clic en "Iniciar chat" | El panel cambia a la vista de chat con campo de mensaje |
-| 3 | Mirar **A** (sin refrescar) | Aparece "María" en la cola con badge **En espera** |
-| 4 | En **B**, escribir `Hola, tengo una consulta` y Enviar | El mensaje aparece como burbuja azul a la derecha |
-| 5 | Mirar **A** (sin refrescar) | El ítem "María" muestra badge rojo de no leído (1) |
-| 6 | En **A**, clic sobre "María" | Se abre la conversación y se ve `Hola, tengo una consulta` |
-| 7 | En **A**, escribir `Buen día, con gusto le ayudo` y Responder | La respuesta aparece como burbuja azul a la derecha |
-| 8 | Mirar **B** (sin refrescar) | La respuesta del agente aparece como burbuja gris a la izquierda; en **A** el badge cambia a **Activa** |
-| 9 | Repetir 4 y 7 varias veces | Los mensajes fluyen en ambos sentidos sin refrescar |
-| 10 | En ambas ventanas, abrir DevTools → Console | Sin errores |
+## Evidencia SQL
 
-## Prueba de reinicio de la API (persistencia, fase 02)
+```powershell
+@'
+SELECT "Id", "VisitorDisplayName", "Status", "CreatedAtUtc", "UpdatedAtUtc", "ClosedAtUtc"
+FROM "Conversations"
+ORDER BY "CreatedAtUtc" DESC
+LIMIT 5;
+'@ | docker exec -i andje-chat-db-1 psql -U andje -d andje_chat
 
-1. Con la conversación abierta, ejecutar `docker compose restart api`.
-2. El widget muestra "Reconectando…" y la consola pasa a **desconectado**.
-3. Al volver la API (~10 s), ambos se reconectan solos: la consola recarga la
-   cola con la conversación persistida y el widget repinta el historial
-   completo desde PostgreSQL. Se puede seguir conversando donde iba.
+@'
+SELECT "ConversationId", "SenderType", LEFT("Body", 40) AS "BodyPreview", "CreatedAtUtc"
+FROM "Messages"
+ORDER BY "CreatedAtUtc" DESC
+LIMIT 10;
+'@ | docker exec -i andje-chat-db-1 psql -U andje -d andje_chat
 
-> Durante el corte, la consola del navegador registra errores transitorios
-> del cliente SignalR (WebSocket cerrado / negociación fallida). Es el
-> comportamiento esperado de una desconexión real; desaparecen al reconectar
-> y el flujo normal (pasos 1–10) no genera ningún error.
-
-## Verificación en base de datos (fase 02)
-
-```bash
-docker exec -it andje-chat-db-1 psql -U andje -d andje_chat \
-  -c 'SELECT "Status", "VisitorDisplayName" FROM "Conversations";' \
-  -c 'SELECT "SenderType", left("Body", 30) FROM "Messages" ORDER BY "CreatedAtUtc";' \
-  -c 'SELECT "EventType", "ActorType" FROM "AuditEvents" ORDER BY "CreatedAtUtc";'
+@'
+SELECT "ConversationId", "EventType", "ActorType", "DataJson", "CreatedAtUtc"
+FROM "AuditEvents"
+ORDER BY "CreatedAtUtc" DESC
+LIMIT 10;
+'@ | docker exec -i andje-chat-db-1 psql -U andje -d andje_chat
 ```
 
-Deben aparecer la conversación (`Active`), los mensajes de ambos lados y los
-eventos `conversation.started`, `message.sent.visitor`, `message.sent.agent`
-y `conversation.activated`.
+Resultado esperado:
 
-## Limpieza
+- `Conversations.Status = Closed`.
+- `Conversations.ClosedAtUtc` no nulo.
+- Los mensajes previos al cierre siguen persistidos.
+- `AuditEvents` contiene `conversation.closed`.
+- `AuditEvents.DataJson` no contiene cuerpo de mensajes.
 
-```bash
-docker compose down
+## Verificacion de logs
+
+```powershell
+docker logs andje-chat-api-1 | Select-String 'Hola, necesito orientacion general'
+docker logs andje-chat-api-1 | Select-String 'Hola, con gusto te orientamos'
 ```
 
-## Resultado de la última ejecución
-
-Ejecutada el 2026-07-05 sobre `feat/02-persistence-audit-foundation`: pasos
-1–10, reinicio de la API y verificación en base de datos pasaron (verificado
-con dos páginas controladas por navegador, sin errores en la consola de
-DevTools).
+Resultado esperado: cero coincidencias.

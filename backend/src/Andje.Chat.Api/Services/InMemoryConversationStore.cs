@@ -27,7 +27,9 @@ public sealed class InMemoryConversationStore : IConversationStore
             Guid.NewGuid(),
             ConversationStatus.Pending.ToString(),
             visitorDisplayName,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            null);
         _conversations[dto.Id] = new Entry(dto);
         return Task.FromResult(dto);
     }
@@ -43,6 +45,20 @@ public sealed class InMemoryConversationStore : IConversationStore
                 .OrderBy(c => c.StartedAt)];
         }
         return Task.FromResult(result);
+    }
+
+    public Task<ConversationDto?> GetConversationAsync(
+        Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        if (!_conversations.TryGetValue(conversationId, out var entry))
+        {
+            return Task.FromResult<ConversationDto?>(null);
+        }
+
+        lock (_sync)
+        {
+            return Task.FromResult<ConversationDto?>(entry.Conversation);
+        }
     }
 
     public Task<IReadOnlyList<ChatMessageDto>?> GetMessagesAsync(
@@ -70,8 +86,14 @@ public sealed class InMemoryConversationStore : IConversationStore
 
         lock (_sync)
         {
+            if (entry.Conversation.Status == ConversationStatus.Closed.ToString())
+            {
+                throw new ConversationClosedException();
+            }
+
+            var now = DateTimeOffset.UtcNow;
             var message = new ChatMessageDto(
-                Guid.NewGuid(), conversationId, senderType.ToString(), body, DateTimeOffset.UtcNow);
+                Guid.NewGuid(), conversationId, senderType.ToString(), body, now);
             entry.Messages.Add(message);
 
             var statusChanged = false;
@@ -81,12 +103,46 @@ public sealed class InMemoryConversationStore : IConversationStore
                 entry.Conversation = entry.Conversation with
                 {
                     Status = ConversationStatus.Active.ToString(),
+                    UpdatedAtUtc = now,
                 };
                 statusChanged = true;
+            }
+            else
+            {
+                entry.Conversation = entry.Conversation with
+                {
+                    UpdatedAtUtc = now,
+                };
             }
 
             return Task.FromResult<AppendMessageResult?>(
                 new AppendMessageResult(message, entry.Conversation, statusChanged));
+        }
+    }
+
+    public Task<ConversationDto?> CloseConversationAsync(
+        Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        if (!_conversations.TryGetValue(conversationId, out var entry))
+        {
+            return Task.FromResult<ConversationDto?>(null);
+        }
+
+        lock (_sync)
+        {
+            if (entry.Conversation.Status == ConversationStatus.Closed.ToString())
+            {
+                return Task.FromResult<ConversationDto?>(entry.Conversation);
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            entry.Conversation = entry.Conversation with
+            {
+                Status = ConversationStatus.Closed.ToString(),
+                UpdatedAtUtc = now,
+                ClosedAtUtc = now,
+            };
+            return Task.FromResult<ConversationDto?>(entry.Conversation);
         }
     }
 }

@@ -10,10 +10,10 @@ namespace Andje.Chat.Api.Hubs;
 ///
 /// Grupos:
 /// - "agents": todas las conexiones de la consola. Reciben
-///   ConversationStarted, ConversationUpdated y una copia de cada
+///   ConversationStarted, ConversationUpdated, ConversationClosed y una copia de cada
 ///   MessageReceived.
 /// - "conversation:{id}": la(s) conexión(es) del visitante de esa
-///   conversación. Reciben MessageReceived de su conversación.
+///   conversación. Reciben MessageReceived y ConversationClosed de su conversación.
 ///
 /// Sin autenticación en esta fase: cualquier conexión puede actuar como
 /// visitante o consola. Bloqueante a resolver antes de exponer fuera de
@@ -46,10 +46,15 @@ public sealed class ChatHub(IConversationStore store) : Hub
     public async Task<IReadOnlyList<ChatMessageDto>> JoinConversation(Guid conversationId)
     {
         var messages = await store.GetMessagesAsync(conversationId)
-            ?? throw new HubException("La conversación no existe.");
+            ?? throw new HubException("Conversation not found.");
         await Groups.AddToGroupAsync(Context.ConnectionId, ConversationGroup(conversationId));
         return messages;
     }
+
+    /// <summary>Devuelve el estado actual de una conversación existente.</summary>
+    public async Task<ConversationDto> GetConversation(Guid conversationId) =>
+        await store.GetConversationAsync(conversationId)
+            ?? throw new HubException("Conversation not found.");
 
     /// <summary>
     /// Une la conexión de la consola al grupo de atención y devuelve las
@@ -64,13 +69,24 @@ public sealed class ChatHub(IConversationStore store) : Hub
     /// <summary>Historial de una conversación (la consola lo pide al seleccionarla).</summary>
     public async Task<IReadOnlyList<ChatMessageDto>> GetConversationHistory(Guid conversationId) =>
         await store.GetMessagesAsync(conversationId)
-            ?? throw new HubException("La conversación no existe.");
+            ?? throw new HubException("Conversation not found.");
 
     public Task SendVisitorMessage(SendVisitorMessageRequest request) =>
         SendMessageAsync(request.ConversationId, SenderType.Visitor, request.Content);
 
     public Task SendAgentMessage(SendAgentMessageRequest request) =>
         SendMessageAsync(request.ConversationId, SenderType.Agent, request.Content);
+
+    public async Task<ConversationDto> CloseConversation(Guid conversationId)
+    {
+        var conversation = await store.CloseConversationAsync(conversationId)
+            ?? throw new HubException("Conversation not found.");
+
+        await Clients.Group(ConversationGroup(conversationId)).SendAsync("ConversationClosed", conversation);
+        await Clients.Group(AgentsGroup).SendAsync("ConversationClosed", conversation);
+        await Clients.Group(AgentsGroup).SendAsync("ConversationUpdated", conversation);
+        return conversation;
+    }
 
     private async Task SendMessageAsync(Guid conversationId, SenderType senderType, string? content)
     {
@@ -80,8 +96,20 @@ public sealed class ChatHub(IConversationStore store) : Hub
             throw new HubException("El mensaje no puede estar vacío.");
         }
 
-        var result = await store.AppendMessageAsync(conversationId, senderType, text)
-            ?? throw new HubException("La conversación no existe.");
+        AppendMessageResult? result;
+        try
+        {
+            result = await store.AppendMessageAsync(conversationId, senderType, text);
+        }
+        catch (ConversationClosedException)
+        {
+            throw new HubException("Conversation is closed.");
+        }
+
+        if (result is null)
+        {
+            throw new HubException("Conversation not found.");
+        }
 
         // El emisor recibe su propio mensaje por eco del grupo: los clientes
         // pintan solo lo que confirma el servidor.

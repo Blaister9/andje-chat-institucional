@@ -129,6 +129,66 @@ public class PostgresConversationStoreTests(PostgresFixture fixture) : IClassFix
     }
 
     [SkippableFact]
+    public async Task Cerrar_conversacion_persiste_estado_fecha_y_auditoria_idempotente()
+    {
+        Skip.IfNot(fixture.Available, fixture.SkipReason);
+
+        await using var db = CreateContext();
+        var store = new PostgresConversationStore(db);
+        var dto = await store.StartConversationAsync("Cierre");
+
+        var closed = await store.CloseConversationAsync(dto.Id);
+        Assert.NotNull(closed);
+        Assert.Equal("Closed", closed.Status);
+        Assert.NotNull(closed.ClosedAtUtc);
+
+        var closedAgain = await store.CloseConversationAsync(dto.Id);
+        Assert.NotNull(closedAgain);
+        Assert.Equal("Closed", closedAgain.Status);
+        Assert.Equal(closed.ClosedAtUtc, closedAgain.ClosedAtUtc);
+
+        await using var verify = CreateContext();
+        var conversation = await verify.Conversations.SingleAsync(c => c.Id == dto.Id);
+        Assert.Equal(ConversationStatus.Closed, conversation.Status);
+        Assert.NotNull(conversation.ClosedAtUtc);
+        Assert.True(conversation.UpdatedAtUtc >= conversation.CreatedAtUtc);
+
+        var audit = await verify.AuditEvents.SingleAsync(
+            a => a.ConversationId == dto.Id && a.EventType == "conversation.closed");
+        Assert.Equal("Agent", audit.ActorType);
+        Assert.Null(audit.DataJson);
+    }
+
+    [SkippableFact]
+    public async Task No_permite_mensajes_en_conversacion_cerrada_y_conserva_historial()
+    {
+        Skip.IfNot(fixture.Available, fixture.SkipReason);
+
+        await using var db = CreateContext();
+        var store = new PostgresConversationStore(db);
+        var dto = await store.StartConversationAsync(null);
+        var firstMessage = await store.AppendMessageAsync(dto.Id, SenderType.Visitor, "Mensaje inicial");
+        Assert.NotNull(firstMessage);
+
+        await store.CloseConversationAsync(dto.Id);
+
+        await Assert.ThrowsAsync<ConversationClosedException>(() =>
+            store.AppendMessageAsync(dto.Id, SenderType.Visitor, "Mensaje posterior"));
+        await Assert.ThrowsAsync<ConversationClosedException>(() =>
+            store.AppendMessageAsync(dto.Id, SenderType.Agent, "Respuesta posterior"));
+
+        var history = await store.GetMessagesAsync(dto.Id);
+        Assert.NotNull(history);
+        var message = Assert.Single(history);
+        Assert.Equal("Mensaje inicial", message.Content);
+
+        await using var verify = CreateContext();
+        Assert.Equal(1, await verify.Messages.CountAsync(m => m.ConversationId == dto.Id));
+        Assert.Equal(1, await verify.AuditEvents.CountAsync(
+            a => a.ConversationId == dto.Id && a.EventType == "conversation.closed"));
+    }
+
+    [SkippableFact]
     public async Task Los_datos_sobreviven_a_un_reinicio_simulado_del_proceso()
     {
         Skip.IfNot(fixture.Available, fixture.SkipReason);
