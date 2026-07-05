@@ -27,11 +27,13 @@ public interface IConversationStore
     /// <returns>El resultado del envío, o null si la conversación no existe.</returns>
     Task<AppendMessageResult?> AppendMessageAsync(
         Guid conversationId, SenderType senderType, string body,
+        AgentActor? agentActor = null,
         CancellationToken cancellationToken = default);
 
     /// <returns>La conversación cerrada, o null si no existe.</returns>
     Task<ConversationDto?> CloseConversationAsync(
-        Guid conversationId, CancellationToken cancellationToken = default);
+        Guid conversationId, AgentActor agentActor,
+        CancellationToken cancellationToken = default);
 }
 
 /// <param name="StatusChanged">True si la conversación pasó de Pending a Active.</param>

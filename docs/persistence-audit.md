@@ -1,7 +1,7 @@
 # Persistencia y auditoria
 
-Fase 03 agrega cierre persistido de conversaciones y auditoria
-`conversation.closed` sobre la base de fase 02.
+Fase 04 mantiene la persistencia de conversaciones de fase 03 y enriquece la
+auditoria de acciones de agente con identidad minima de desarrollo.
 
 ## Arquitectura
 
@@ -32,13 +32,16 @@ texto y `ClosedAtUtc` ya existia como nullable.
 | --- | --- | --- | --- |
 | `conversation.started` | `Visitor` | El visitante inicia una conversacion | `null` |
 | `message.sent.visitor` | `Visitor` | El visitante envia un mensaje | `{ "messageId": "..." }` |
-| `message.sent.agent` | `Agent` | El agente envia un mensaje | `{ "messageId": "..." }` |
-| `conversation.activated` | `Agent` | Primera respuesta del agente cambia `Pending` a `Active` | `{ "messageId": "..." }` |
-| `conversation.closed` | `Agent` | La consola cierra una conversacion | `null` |
+| `message.sent.agent` | `Agent` | El agente envia un mensaje | `{ "messageId": "...", "agentSessionId": "...", "agentDisplayName": "Agente QA" }` |
+| `conversation.activated` | `Agent` | Primera respuesta del agente cambia `Pending` a `Active` | `{ "messageId": "...", "agentSessionId": "...", "agentDisplayName": "Agente QA" }` |
+| `conversation.closed` | `Agent` | La consola cierra una conversacion | `{ "agentSessionId": "...", "agentDisplayName": "Agente QA" }` |
 
 Reglas de privacidad:
 
 - `DataJson` contiene referencias tecnicas, no cuerpo de mensajes.
+- `DataJson` no contiene codigo de acceso ni token opaco de agente.
+- La identidad de agente es local/de desarrollo; no es identidad institucional
+  verificada.
 - Los logs de API no registran texto de mensajes.
 - Los timestamps se guardan en UTC.
 
@@ -61,5 +64,7 @@ ORDER BY "CreatedAtUtc" DESC
 LIMIT 10;
 ```
 
-La evidencia esperada para fase 03 es una conversacion con `Status = Closed`,
-`ClosedAtUtc` no nulo y un evento `conversation.closed`.
+La evidencia esperada para fase 04 es una conversacion con `Status = Closed`,
+`ClosedAtUtc` no nulo, eventos `message.sent.agent` y `conversation.closed`
+con `agentSessionId`/`agentDisplayName`, y sin token, codigo ni cuerpo completo
+de mensajes en `DataJson`.
