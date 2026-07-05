@@ -3,9 +3,7 @@ using Andje.Chat.Api.Contracts;
 namespace Andje.Chat.Api.Domain;
 
 /// <summary>
-/// Entidad persistida de una conversación. El estado Closed (con ClosedAtUtc)
-/// se implementa en una fase posterior; la columna ya existe para no requerir
-/// otra migración.
+/// Entidad persistida de una conversación.
 /// </summary>
 public class Conversation
 {
@@ -18,5 +16,5 @@ public class Conversation
     public List<ChatMessage> Messages { get; set; } = [];
 
     public ConversationDto ToDto() =>
-        new(Id, Status.ToString(), VisitorDisplayName, CreatedAtUtc);
+        new(Id, Status.ToString(), VisitorDisplayName, CreatedAtUtc, UpdatedAtUtc, ClosedAtUtc);
 }

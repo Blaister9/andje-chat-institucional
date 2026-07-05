@@ -1,3 +1,4 @@
+using Andje.Chat.Api.Contracts;
 using Andje.Chat.Api.Data;
 using Andje.Chat.Api.Hubs;
 using Andje.Chat.Api.Services;
@@ -21,6 +22,11 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddHealthChecks();
 builder.Services.AddSignalR();
+ApplyAgentAccessEnvironmentAliases(builder.Configuration);
+builder.Services.Configure<AgentAccessOptions>(
+    builder.Configuration.GetSection("AgentAccess"));
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IAgentSessionService, AgentSessionService>();
 
 builder.Services.AddDbContext<ChatDbContext>(options =>
     options.UseNpgsql(
@@ -41,7 +47,41 @@ if (app.Configuration.GetValue("Database:AutoMigrate", true))
 app.UseCors(corsPolicy);
 
 app.MapHealthChecks("/health");
+app.MapPost("/api/agent-sessions", (
+    CreateAgentSessionRequest request,
+    IAgentSessionService sessions) =>
+{
+    try
+    {
+        return Results.Ok(sessions.CreateSession(request));
+    }
+    catch (AgentSessionRejectedException)
+    {
+        return Results.Unauthorized();
+    }
+});
 app.MapHub<ChatHub>("/hubs/chat");
+
+static void ApplyAgentAccessEnvironmentAliases(IConfiguration configuration)
+{
+    var enabled = Environment.GetEnvironmentVariable("ANDJE_AGENT_ACCESS_ENABLED");
+    if (!string.IsNullOrWhiteSpace(enabled))
+    {
+        configuration["AgentAccess:Enabled"] = enabled;
+    }
+
+    var devCode = Environment.GetEnvironmentVariable("ANDJE_AGENT_DEV_CODE");
+    if (!string.IsNullOrWhiteSpace(devCode))
+    {
+        configuration["AgentAccess:DevelopmentAccessCode"] = devCode;
+    }
+
+    var sessionMinutes = Environment.GetEnvironmentVariable("ANDJE_AGENT_SESSION_MINUTES");
+    if (!string.IsNullOrWhiteSpace(sessionMinutes))
+    {
+        configuration["AgentAccess:SessionMinutes"] = sessionMinutes;
+    }
+}
 
 app.Run();
 

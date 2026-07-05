@@ -53,6 +53,8 @@ public sealed class PostgresFixture : IAsyncLifetime
 
 public class PostgresConversationStoreTests(PostgresFixture fixture) : IClassFixture<PostgresFixture>
 {
+    private static readonly AgentActor Agent = new(Guid.Parse("11111111-1111-1111-1111-111111111111"), "Agente QA");
+
     private ChatDbContext CreateContext() => new(fixture.Options);
 
     [SkippableFact]
@@ -108,13 +110,13 @@ public class PostgresConversationStoreTests(PostgresFixture fixture) : IClassFix
         var store = new PostgresConversationStore(db);
         var dto = await store.StartConversationAsync(null);
 
-        var result = await store.AppendMessageAsync(dto.Id, SenderType.Agent, "Respuesta");
+        var result = await store.AppendMessageAsync(dto.Id, SenderType.Agent, "Respuesta", Agent);
         Assert.NotNull(result);
         Assert.True(result.StatusChanged);
         Assert.Equal("Active", result.Conversation.Status);
 
         // Una segunda respuesta ya no cambia el estado.
-        var second = await store.AppendMessageAsync(dto.Id, SenderType.Agent, "Otra respuesta");
+        var second = await store.AppendMessageAsync(dto.Id, SenderType.Agent, "Otra respuesta", Agent);
         Assert.False(second!.StatusChanged);
 
         await using var verify = CreateContext();
@@ -126,6 +128,76 @@ public class PostgresConversationStoreTests(PostgresFixture fixture) : IClassFix
             a => a.ConversationId == dto.Id && a.EventType == "conversation.activated"));
         Assert.Equal(2, await verify.AuditEvents.CountAsync(
             a => a.ConversationId == dto.Id && a.EventType == "message.sent.agent"));
+
+        var audit = await verify.AuditEvents.FirstAsync(
+            a => a.ConversationId == dto.Id && a.EventType == "message.sent.agent");
+        Assert.Contains("agentSessionId", audit.DataJson);
+        Assert.Contains(Agent.SessionId.ToString(), audit.DataJson);
+        Assert.Contains("Agente QA", audit.DataJson);
+        Assert.DoesNotContain("Respuesta", audit.DataJson);
+    }
+
+    [SkippableFact]
+    public async Task Cerrar_conversacion_persiste_estado_fecha_y_auditoria_idempotente()
+    {
+        Skip.IfNot(fixture.Available, fixture.SkipReason);
+
+        await using var db = CreateContext();
+        var store = new PostgresConversationStore(db);
+        var dto = await store.StartConversationAsync("Cierre");
+
+        var closed = await store.CloseConversationAsync(dto.Id, Agent);
+        Assert.NotNull(closed);
+        Assert.Equal("Closed", closed.Status);
+        Assert.NotNull(closed.ClosedAtUtc);
+
+        var closedAgain = await store.CloseConversationAsync(dto.Id, Agent);
+        Assert.NotNull(closedAgain);
+        Assert.Equal("Closed", closedAgain.Status);
+        Assert.Equal(closed.ClosedAtUtc, closedAgain.ClosedAtUtc);
+
+        await using var verify = CreateContext();
+        var conversation = await verify.Conversations.SingleAsync(c => c.Id == dto.Id);
+        Assert.Equal(ConversationStatus.Closed, conversation.Status);
+        Assert.NotNull(conversation.ClosedAtUtc);
+        Assert.True(conversation.UpdatedAtUtc >= conversation.CreatedAtUtc);
+
+        var audit = await verify.AuditEvents.SingleAsync(
+            a => a.ConversationId == dto.Id && a.EventType == "conversation.closed");
+        Assert.Equal("Agent", audit.ActorType);
+        Assert.Contains("agentSessionId", audit.DataJson);
+        Assert.Contains(Agent.SessionId.ToString(), audit.DataJson);
+        Assert.Contains("Agente QA", audit.DataJson);
+        Assert.DoesNotContain("test-agent-code", audit.DataJson);
+    }
+
+    [SkippableFact]
+    public async Task No_permite_mensajes_en_conversacion_cerrada_y_conserva_historial()
+    {
+        Skip.IfNot(fixture.Available, fixture.SkipReason);
+
+        await using var db = CreateContext();
+        var store = new PostgresConversationStore(db);
+        var dto = await store.StartConversationAsync(null);
+        var firstMessage = await store.AppendMessageAsync(dto.Id, SenderType.Visitor, "Mensaje inicial");
+        Assert.NotNull(firstMessage);
+
+        await store.CloseConversationAsync(dto.Id, Agent);
+
+        await Assert.ThrowsAsync<ConversationClosedException>(() =>
+            store.AppendMessageAsync(dto.Id, SenderType.Visitor, "Mensaje posterior"));
+        await Assert.ThrowsAsync<ConversationClosedException>(() =>
+            store.AppendMessageAsync(dto.Id, SenderType.Agent, "Respuesta posterior", Agent));
+
+        var history = await store.GetMessagesAsync(dto.Id);
+        Assert.NotNull(history);
+        var message = Assert.Single(history);
+        Assert.Equal("Mensaje inicial", message.Content);
+
+        await using var verify = CreateContext();
+        Assert.Equal(1, await verify.Messages.CountAsync(m => m.ConversationId == dto.Id));
+        Assert.Equal(1, await verify.AuditEvents.CountAsync(
+            a => a.ConversationId == dto.Id && a.EventType == "conversation.closed"));
     }
 
     [SkippableFact]

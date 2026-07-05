@@ -28,6 +28,10 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__ChatDb: Host=db;Port=5432;Database=andje_chat;Username=andje;Password=${ANDJE_DB_PASSWORD:-andje_dev_local}
+      # Acceso local de desarrollo para la consola; no usar como secreto real.
+      ANDJE_AGENT_ACCESS_ENABLED: "true"
+      ANDJE_AGENT_DEV_CODE: ${ANDJE_AGENT_DEV_CODE:-andje-agent-local}
+      ANDJE_AGENT_SESSION_MINUTES: ${ANDJE_AGENT_SESSION_MINUTES:-120}
     ports:
       - "8080:8080"
     depends_on:
