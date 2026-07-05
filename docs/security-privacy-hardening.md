@@ -60,8 +60,9 @@ las respuestas:
 ## Validacion de configuracion insegura al arranque
 
 `Security/SecurityStartupValidation.cs` detecta configuraciones peligrosas.
-Fuera de desarrollo estos hallazgos son **fatales** (la app no arranca); en
-desarrollo se emiten como **advertencias** para no romper el flujo local.
+Fuera de desarrollo/pruebas estos hallazgos son **fatales** (la app no
+arranca); en los entornos `Development` y `Test` se emiten como
+**advertencias** para no romper el flujo local ni las pruebas de integracion.
 
 Casos cubiertos:
 

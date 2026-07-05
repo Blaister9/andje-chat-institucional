@@ -11,7 +11,7 @@ public class SecurityStartupValidationTests
     public void Configuracion_local_valida_no_reporta_problemas()
     {
         var issues = SecurityStartupValidation.Collect(
-            isDevelopment: true,
+            isDevelopmentOrTest: true,
             agentAccess: EnabledWithCode("codigo-fuerte-local"),
             corsOrigins: ValidOrigins,
             autoMigrate: true,
@@ -24,7 +24,7 @@ public class SecurityStartupValidationTests
     public void Agent_access_habilitado_sin_codigo_es_problema()
     {
         var issues = SecurityStartupValidation.Collect(
-            isDevelopment: false,
+            isDevelopmentOrTest: false,
             agentAccess: EnabledWithCode(""),
             corsOrigins: ValidOrigins,
             autoMigrate: false,
@@ -37,7 +37,7 @@ public class SecurityStartupValidationTests
     public void Cors_con_comodin_es_problema()
     {
         var issues = SecurityStartupValidation.Collect(
-            isDevelopment: false,
+            isDevelopmentOrTest: false,
             agentAccess: EnabledWithCode("codigo-fuerte"),
             corsOrigins: ["*"],
             autoMigrate: false,
@@ -50,7 +50,7 @@ public class SecurityStartupValidationTests
     public void Cors_vacio_es_problema()
     {
         var issues = SecurityStartupValidation.Collect(
-            isDevelopment: false,
+            isDevelopmentOrTest: false,
             agentAccess: EnabledWithCode("codigo-fuerte"),
             corsOrigins: [],
             autoMigrate: false,
@@ -63,7 +63,7 @@ public class SecurityStartupValidationTests
     public void Sin_cadena_de_conexion_es_problema()
     {
         var issues = SecurityStartupValidation.Collect(
-            isDevelopment: false,
+            isDevelopmentOrTest: false,
             agentAccess: EnabledWithCode("codigo-fuerte"),
             corsOrigins: ValidOrigins,
             autoMigrate: false,
@@ -76,7 +76,7 @@ public class SecurityStartupValidationTests
     public void Automigrate_fuera_de_desarrollo_es_problema()
     {
         var issues = SecurityStartupValidation.Collect(
-            isDevelopment: false,
+            isDevelopmentOrTest: false,
             agentAccess: EnabledWithCode("codigo-fuerte"),
             corsOrigins: ValidOrigins,
             autoMigrate: true,
@@ -89,7 +89,7 @@ public class SecurityStartupValidationTests
     public void Codigo_local_conocido_fuera_de_desarrollo_es_problema()
     {
         var issues = SecurityStartupValidation.Collect(
-            isDevelopment: false,
+            isDevelopmentOrTest: false,
             agentAccess: EnabledWithCode("andje-agent-local"),
             corsOrigins: ValidOrigins,
             autoMigrate: false,
@@ -99,10 +99,10 @@ public class SecurityStartupValidationTests
     }
 
     [Fact]
-    public void Codigo_local_conocido_en_desarrollo_no_es_problema()
+    public void Codigo_local_conocido_en_desarrollo_o_pruebas_no_es_problema()
     {
         var issues = SecurityStartupValidation.Collect(
-            isDevelopment: true,
+            isDevelopmentOrTest: true,
             agentAccess: EnabledWithCode("andje-agent-local"),
             corsOrigins: ValidOrigins,
             autoMigrate: true,
