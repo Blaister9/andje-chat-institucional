@@ -1,0 +1,130 @@
+using Andje.Chat.Api.Contracts;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR.Client;
+
+namespace Andje.Chat.Api.Tests;
+
+public class RealtimeFlowTests(WebApplicationFactory<Program> factory) : IClassFixture<WebApplicationFactory<Program>>
+{
+    private static readonly TimeSpan EventTimeout = TimeSpan.FromSeconds(10);
+
+    [Fact]
+    public async Task Flujo_completo_visitante_y_consola_en_tiempo_real()
+    {
+        await using var visitor = CreateConnection();
+        await using var agent = CreateConnection();
+        await visitor.StartAsync();
+        await agent.StartAsync();
+
+        // La consola se une al grupo de atención antes de que exista la conversación.
+        var conversationStarted = NewEventSource<ConversationDto>();
+        agent.On<ConversationDto>("ConversationStarted", dto => conversationStarted.TrySetResult(dto));
+        await agent.InvokeAsync<List<ConversationDto>>("JoinAgentConsole");
+
+        // El visitante inicia la conversación; la consola es notificada sin refrescar.
+        var conversation = await visitor.InvokeAsync<ConversationDto>(
+            "StartConversation", new StartConversationRequest("Ciudadano de prueba"));
+
+        Assert.Equal("Pending", conversation.Status);
+        var notified = await conversationStarted.Task.WaitAsync(EventTimeout);
+        Assert.Equal(conversation.Id, notified.Id);
+
+        // El visitante envía un mensaje; la consola lo recibe en tiempo real.
+        var agentReceived = NewEventSource<ChatMessageDto>();
+        agent.On<ChatMessageDto>("MessageReceived", dto =>
+        {
+            if (dto.ConversationId == conversation.Id && dto.SenderType == "Visitor")
+            {
+                agentReceived.TrySetResult(dto);
+            }
+        });
+
+        var visitorReceivedReply = NewEventSource<ChatMessageDto>();
+        visitor.On<ChatMessageDto>("MessageReceived", dto =>
+        {
+            if (dto.ConversationId == conversation.Id && dto.SenderType == "Agent")
+            {
+                visitorReceivedReply.TrySetResult(dto);
+            }
+        });
+
+        var conversationUpdated = NewEventSource<ConversationDto>();
+        agent.On<ConversationDto>("ConversationUpdated", dto => conversationUpdated.TrySetResult(dto));
+
+        await visitor.InvokeAsync("SendVisitorMessage",
+            new SendVisitorMessageRequest(conversation.Id, "Hola, necesito información"));
+
+        var received = await agentReceived.Task.WaitAsync(EventTimeout);
+        Assert.Equal("Hola, necesito información", received.Content);
+
+        // El agente responde; el widget recibe la respuesta en tiempo real
+        // y la conversación pasa de Pending a Active.
+        await agent.InvokeAsync("SendAgentMessage",
+            new SendAgentMessageRequest(conversation.Id, "Con gusto, ¿en qué puedo ayudarle?"));
+
+        var reply = await visitorReceivedReply.Task.WaitAsync(EventTimeout);
+        Assert.Equal("Con gusto, ¿en qué puedo ayudarle?", reply.Content);
+
+        var updated = await conversationUpdated.Task.WaitAsync(EventTimeout);
+        Assert.Equal("Active", updated.Status);
+    }
+
+    [Fact]
+    public async Task El_historial_se_recupera_al_unirse_a_la_conversacion()
+    {
+        await using var visitor = CreateConnection();
+        await visitor.StartAsync();
+
+        var conversation = await visitor.InvokeAsync<ConversationDto>(
+            "StartConversation", new StartConversationRequest(null));
+        await visitor.InvokeAsync("SendVisitorMessage",
+            new SendVisitorMessageRequest(conversation.Id, "Primer mensaje"));
+
+        // Simula una reconexión del widget con una conexión nueva.
+        await using var reconnected = CreateConnection();
+        await reconnected.StartAsync();
+        var history = await reconnected.InvokeAsync<List<ChatMessageDto>>(
+            "JoinConversation", conversation.Id);
+
+        var message = Assert.Single(history);
+        Assert.Equal("Primer mensaje", message.Content);
+        Assert.Equal("Visitor", message.SenderType);
+    }
+
+    [Fact]
+    public async Task Un_mensaje_vacio_es_rechazado()
+    {
+        await using var visitor = CreateConnection();
+        await visitor.StartAsync();
+
+        var conversation = await visitor.InvokeAsync<ConversationDto>(
+            "StartConversation", new StartConversationRequest(null));
+
+        await Assert.ThrowsAsync<HubException>(() => visitor.InvokeAsync(
+            "SendVisitorMessage", new SendVisitorMessageRequest(conversation.Id, "   ")));
+    }
+
+    [Fact]
+    public async Task Enviar_a_una_conversacion_inexistente_es_rechazado()
+    {
+        await using var agent = CreateConnection();
+        await agent.StartAsync();
+
+        await Assert.ThrowsAsync<HubException>(() => agent.InvokeAsync(
+            "SendAgentMessage", new SendAgentMessageRequest(Guid.NewGuid(), "Hola")));
+    }
+
+    private HubConnection CreateConnection() => new HubConnectionBuilder()
+        .WithUrl(new Uri(factory.Server.BaseAddress, "hubs/chat"), options =>
+        {
+            // TestServer no soporta WebSockets; long polling basta para las pruebas.
+            options.Transports = HttpTransportType.LongPolling;
+            options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+        })
+        .Build();
+
+    private static TaskCompletionSource<T> NewEventSource<T>() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+}

@@ -5,7 +5,8 @@ pensado para reemplazar soluciones externas tipo tawk.to con una alternativa
 bajo control institucional: trazabilidad, privacidad, auditoría y preparación
 para IA asistida en fases futuras.
 
-> **Estado:** fase 00 — fundación del proyecto. No apto para producción.
+> **Estado:** fase 01 — mensajería en tiempo real sin persistencia (en
+> memoria). No apto para producción.
 
 ## Visión
 
@@ -141,10 +142,12 @@ dos líneas, sin dependencias de framework:
 - [ADR 0001 — Arquitectura inicial](docs/adr/0001-architecture.md)
 - [Modelo de dominio](docs/domain-model.md)
 - [Línea base de seguridad y privacidad](docs/privacy-security-baseline.md)
+- [Prueba manual del flujo en tiempo real](docs/manual-test-realtime.md)
 
 ## Flujo de trabajo
 
 - No se trabaja directamente sobre `main` ni `develop`; todo cambio entra por
   rama `feat/*` y pull request.
-- Fase actual: `feat/00-project-foundation`. Siguiente fase sugerida:
-  persistencia (EF Core + migraciones) y mensajería básica por SignalR.
+- Fase actual: `feat/01-realtime-message-flow` — flujo visitante ↔ agente en
+  tiempo real con almacenamiento en memoria. Siguiente fase sugerida:
+  persistencia (EF Core + PostgreSQL + migraciones) detrás del store actual.

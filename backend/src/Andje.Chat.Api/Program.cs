@@ -1,4 +1,5 @@
 using Andje.Chat.Api.Hubs;
+using Andje.Chat.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +19,7 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddHealthChecks();
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<InMemoryConversationStore>();
 
 var app = builder.Build();
 

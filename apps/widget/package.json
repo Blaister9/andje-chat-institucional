@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "description": "Widget embebible del chat institucional ANDJE (Web Component)",
   "type": "module",
+  "dependencies": {
+    "@microsoft/signalr": "^8.0.7"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
