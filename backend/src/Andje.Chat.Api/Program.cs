@@ -76,11 +76,12 @@ builder.Services.AddScoped<IConversationStore, PostgresConversationStore>();
 
 var app = builder.Build();
 
-// Falla rapido ante configuracion insegura fuera de desarrollo; en desarrollo
-// solo advierte para no romper el flujo local.
+// Falla rapido ante configuracion insegura fuera de desarrollo/pruebas; en
+// desarrollo y pruebas solo advierte para no romper el flujo local ni el CI.
+var isDevelopmentOrTest = app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Test");
 var autoMigrate = app.Configuration.GetValue("Database:AutoMigrate", true);
 var startupIssues = SecurityStartupValidation.Collect(
-    app.Environment.IsDevelopment(),
+    isDevelopmentOrTest,
     app.Configuration.GetSection("AgentAccess").Get<AgentAccessOptions>() ?? new AgentAccessOptions(),
     corsOrigins,
     autoMigrate,
@@ -89,11 +90,11 @@ var startupIssues = SecurityStartupValidation.Collect(
 if (startupIssues.Count > 0)
 {
     var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup.Security");
-    if (app.Environment.IsDevelopment())
+    if (isDevelopmentOrTest)
     {
         foreach (var issue in startupIssues)
         {
-            logger.LogWarning("Configuracion insegura (solo advertencia en desarrollo): {Issue}", issue);
+            logger.LogWarning("Configuracion insegura (solo advertencia en desarrollo/pruebas): {Issue}", issue);
         }
     }
     else

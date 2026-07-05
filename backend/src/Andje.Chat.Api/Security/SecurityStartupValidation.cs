@@ -4,8 +4,9 @@ namespace Andje.Chat.Api.Security;
 
 /// <summary>
 /// Detecta configuraciones inseguras al arranque. En entornos que no son de
-/// desarrollo estos hallazgos son fatales (la app no arranca); en desarrollo
-/// se emiten como advertencias para no romper el flujo local.
+/// desarrollo ni de pruebas estos hallazgos son fatales (la app no arranca); en
+/// desarrollo/pruebas se emiten como advertencias para no romper el flujo local
+/// ni las pruebas de integracion.
 ///
 /// Nunca incluye valores sensibles (codigo de acceso, cadena de conexion) en
 /// los mensajes: solo describe el problema y la clave de configuracion.
@@ -21,7 +22,7 @@ public static class SecurityStartupValidation
     ];
 
     public static IReadOnlyList<string> Collect(
-        bool isDevelopment,
+        bool isDevelopmentOrTest,
         AgentAccessOptions agentAccess,
         IReadOnlyList<string> corsOrigins,
         bool autoMigrate,
@@ -49,12 +50,12 @@ public static class SecurityStartupValidation
             issues.Add("ConnectionStrings:ChatDb no esta configurada.");
         }
 
-        if (!isDevelopment && autoMigrate)
+        if (!isDevelopmentOrTest && autoMigrate)
         {
             issues.Add("Database:AutoMigrate deberia estar deshabilitado fuera de desarrollo.");
         }
 
-        if (!isDevelopment &&
+        if (!isDevelopmentOrTest &&
             agentAccess.Enabled &&
             InsecureDefaultCodes.Contains(agentAccess.DevelopmentAccessCode, StringComparer.Ordinal))
         {
