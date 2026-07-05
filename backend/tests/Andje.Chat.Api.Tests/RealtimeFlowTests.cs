@@ -93,6 +93,64 @@ public class RealtimeFlowTests(TestWebApplicationFactory factory) : IClassFixtur
     }
 
     [Fact]
+    public async Task Cerrar_conversacion_notifica_bloquea_mensajes_y_conserva_historial()
+    {
+        await using var visitor = CreateConnection();
+        await using var agent = CreateConnection();
+        await visitor.StartAsync();
+        await agent.StartAsync();
+        await agent.InvokeAsync<List<ConversationDto>>("JoinAgentConsole");
+
+        var conversation = await visitor.InvokeAsync<ConversationDto>(
+            "StartConversation", new StartConversationRequest("Ciudadano de prueba"));
+        await visitor.InvokeAsync("SendVisitorMessage",
+            new SendVisitorMessageRequest(conversation.Id, "Mensaje antes del cierre"));
+
+        var visitorClosed = NewEventSource<ConversationDto>();
+        visitor.On<ConversationDto>("ConversationClosed", dto =>
+        {
+            if (dto.Id == conversation.Id)
+            {
+                visitorClosed.TrySetResult(dto);
+            }
+        });
+
+        var agentClosed = NewEventSource<ConversationDto>();
+        agent.On<ConversationDto>("ConversationClosed", dto =>
+        {
+            if (dto.Id == conversation.Id)
+            {
+                agentClosed.TrySetResult(dto);
+            }
+        });
+
+        var closed = await agent.InvokeAsync<ConversationDto>("CloseConversation", conversation.Id);
+        Assert.Equal("Closed", closed.Status);
+        Assert.NotNull(closed.ClosedAtUtc);
+
+        var visitorNotification = await visitorClosed.Task.WaitAsync(EventTimeout);
+        var agentNotification = await agentClosed.Task.WaitAsync(EventTimeout);
+        Assert.Equal("Closed", visitorNotification.Status);
+        Assert.Equal("Closed", agentNotification.Status);
+
+        await Assert.ThrowsAsync<HubException>(() => visitor.InvokeAsync(
+            "SendVisitorMessage", new SendVisitorMessageRequest(conversation.Id, "No debe enviarse")));
+        await Assert.ThrowsAsync<HubException>(() => agent.InvokeAsync(
+            "SendAgentMessage", new SendAgentMessageRequest(conversation.Id, "No debe enviarse")));
+
+        await using var reconnected = CreateConnection();
+        await reconnected.StartAsync();
+        var history = await reconnected.InvokeAsync<List<ChatMessageDto>>(
+            "JoinConversation", conversation.Id);
+        var message = Assert.Single(history);
+        Assert.Equal("Mensaje antes del cierre", message.Content);
+
+        var current = await reconnected.InvokeAsync<ConversationDto>(
+            "GetConversation", conversation.Id);
+        Assert.Equal("Closed", current.Status);
+    }
+
+    [Fact]
     public async Task Un_mensaje_vacio_es_rechazado()
     {
         await using var visitor = CreateConnection();

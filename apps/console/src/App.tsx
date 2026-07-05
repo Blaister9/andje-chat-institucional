@@ -21,6 +21,16 @@ function appendUnique(
   return { ...byConversation, [message.conversationId]: [...current, message] };
 }
 
+function statusLabel(status: ConversationDto['status']): string {
+  if (status === 'Pending') {
+    return 'En espera';
+  }
+  if (status === 'Active') {
+    return 'Activa';
+  }
+  return 'Cerrada';
+}
+
 export function App() {
   const [status, setStatus] = useState<ConnectionStatus>('conectando');
   const [conversations, setConversations] = useState<ConversationDto[]>([]);
@@ -31,6 +41,7 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [sendError, setSendError] = useState('');
+  const [showClosed, setShowClosed] = useState(false);
 
   const connectionRef = useRef<HubConnection | null>(null);
   const selectedIdRef = useRef<string | null>(null);
@@ -51,10 +62,19 @@ export function App() {
       );
     });
 
-    connection.on('ConversationUpdated', (conversation: ConversationDto) => {
+    const updateConversation = (conversation: ConversationDto) => {
       setConversations((prev) =>
         prev.map((c) => (c.id === conversation.id ? conversation : c)),
       );
+    };
+
+    connection.on('ConversationUpdated', updateConversation);
+
+    connection.on('ConversationClosed', (conversation: ConversationDto) => {
+      updateConversation(conversation);
+      if (selectedIdRef.current === conversation.id) {
+        setSendError('La conversacion fue cerrada.');
+      }
     });
 
     connection.on('MessageReceived', (message: ChatMessageDto) => {
@@ -129,46 +149,97 @@ export function App() {
     event.preventDefault();
     const content = draft.trim();
     const connection = connectionRef.current;
-    if (!content || !connection || !selectedId) {
+    const selected = conversations.find((c) => c.id === selectedId) ?? null;
+    if (!content || !connection || !selected || selected.status === 'Closed') {
       return;
     }
     try {
-      // La respuesta se pinta cuando el servidor la confirma (eco del grupo).
       await connection.invoke('SendAgentMessage', {
-        conversationId: selectedId,
+        conversationId: selected.id,
         content,
       });
       setDraft('');
       setSendError('');
-    } catch {
+    } catch (error) {
+      if (String(error).includes('Conversation is closed')) {
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id === selected.id
+              ? { ...conversation, status: 'Closed', closedAtUtc: new Date().toISOString() }
+              : conversation,
+          ),
+        );
+        setSendError('La conversacion ya fue cerrada.');
+        return;
+      }
       setSendError('La respuesta no pudo enviarse.');
     }
   }
 
+  async function closeSelectedConversation() {
+    const connection = connectionRef.current;
+    const selected = conversations.find((c) => c.id === selectedId) ?? null;
+    if (!connection || !selected || selected.status === 'Closed') {
+      return;
+    }
+    if (!confirm('Cerrar esta conversacion?')) {
+      return;
+    }
+    try {
+      const closed = await connection.invoke<ConversationDto>(
+        'CloseConversation',
+        selected.id,
+      );
+      setConversations((prev) =>
+        prev.map((conversation) =>
+          conversation.id === closed.id ? closed : conversation,
+        ),
+      );
+      setDraft('');
+      setSendError('La conversacion fue cerrada.');
+    } catch {
+      setSendError('No fue posible cerrar la conversacion.');
+    }
+  }
+
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
+  const isSelectedClosed = selected?.status === 'Closed';
   const selectedMessages = selectedId
     ? (messagesByConversation[selectedId] ?? [])
     : [];
+  const visibleConversations = showClosed
+    ? conversations
+    : conversations.filter((conversation) => conversation.status !== 'Closed');
 
   return (
     <div className="layout">
       <header className="header">
         <h1>Consola de agentes</h1>
-        <span className="subtitle">Chat institucional — ANDJE</span>
+        <span className="subtitle">Chat institucional - ANDJE</span>
         <span className={`estado-conexion ${status}`}>{status}</span>
       </header>
 
       <main className="panels">
         <section className="panel" aria-label="Cola de conversaciones">
-          <h2>Cola de conversaciones</h2>
-          {conversations.length === 0 ? (
+          <div className="panel-heading">
+            <h2>Cola de conversaciones</h2>
+            <label className="toggle-cerradas">
+              <input
+                type="checkbox"
+                checked={showClosed}
+                onChange={(event) => setShowClosed(event.target.checked)}
+              />
+              Ver cerradas
+            </label>
+          </div>
+          {visibleConversations.length === 0 ? (
             <p className="placeholder">
               Sin conversaciones. Inicie una desde el widget demo
               (http://localhost:5174).
             </p>
           ) : (
             <ul className="cola">
-              {conversations.map((conversation) => (
+              {visibleConversations.map((conversation) => (
                 <li key={conversation.id}>
                   <button
                     type="button"
@@ -176,10 +247,10 @@ export function App() {
                     onClick={() => void selectConversation(conversation.id)}
                   >
                     <span className="nombre">
-                      {conversation.visitorDisplayName ?? 'Ciudadano anónimo'}
+                      {conversation.visitorDisplayName ?? 'Ciudadano anonimo'}
                     </span>
                     <span className={`badge ${conversation.status.toLowerCase()}`}>
-                      {conversation.status === 'Pending' ? 'En espera' : 'Activa'}
+                      {statusLabel(conversation.status)}
                     </span>
                     {(unread[conversation.id] ?? 0) > 0 && (
                       <span className="badge no-leidos">{unread[conversation.id]}</span>
@@ -191,11 +262,11 @@ export function App() {
           )}
         </section>
 
-        <section className="panel" aria-label="Conversación activa">
+        <section className="panel" aria-label="Conversacion activa">
           <h2>
             {selected
-              ? `Conversación con ${selected.visitorDisplayName ?? 'ciudadano anónimo'}`
-              : 'Conversación activa'}
+              ? `Conversacion con ${selected.visitorDisplayName ?? 'ciudadano anonimo'}`
+              : 'Conversacion activa'}
           </h2>
           {selected ? (
             <>
@@ -210,31 +281,51 @@ export function App() {
                 ))}
                 <div ref={messagesEndRef} />
               </div>
+              <div className="acciones-conversacion">
+                <span className={`badge ${selected.status.toLowerCase()}`}>
+                  {statusLabel(selected.status)}
+                </span>
+                {!isSelectedClosed && (
+                  <button
+                    type="button"
+                    className="boton-secundario"
+                    onClick={() => void closeSelectedConversation()}
+                  >
+                    Cerrar conversacion
+                  </button>
+                )}
+              </div>
               <form className="envio" onSubmit={(e) => void sendReply(e)}>
                 <input
                   type="text"
                   value={draft}
                   maxLength={2000}
                   autoComplete="off"
-                  placeholder="Escriba la respuesta…"
+                  placeholder={isSelectedClosed ? 'Conversacion cerrada' : 'Escriba la respuesta...'}
                   aria-label="Respuesta"
+                  disabled={isSelectedClosed}
                   onChange={(e) => setDraft(e.target.value)}
                 />
-                <button type="submit">Responder</button>
+                <button type="submit" disabled={isSelectedClosed}>Responder</button>
               </form>
+              {isSelectedClosed && (
+                <p className="placeholder">
+                  Esta conversacion esta cerrada. No se pueden enviar nuevas respuestas.
+                </p>
+              )}
               {sendError && <p className="error">{sendError}</p>}
             </>
           ) : (
             <p className="placeholder">
-              Seleccione una conversación de la cola para atenderla.
+              Seleccione una conversacion de la cola para atenderla.
             </p>
           )}
         </section>
       </main>
 
       <footer className="footer">
-        Prototipo interno — fase 01: mensajería en tiempo real sin persistencia.
-        No apto para producción.
+        Prototipo interno - fase 03: ciclo de vida minimo de conversacion.
+        No apto para produccion.
       </footer>
     </div>
   );

@@ -1,8 +1,10 @@
 export interface ConversationDto {
   id: string;
-  status: 'Pending' | 'Active';
+  status: 'Pending' | 'Active' | 'Closed';
   visitorDisplayName: string | null;
   startedAt: string;
+  updatedAtUtc: string;
+  closedAtUtc: string | null;
 }
 
 export interface ChatMessageDto {

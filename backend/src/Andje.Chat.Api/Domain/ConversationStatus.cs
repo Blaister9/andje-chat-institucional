@@ -6,5 +6,8 @@ public enum ConversationStatus
     Pending,
 
     /// <summary>Un agente ya respondió.</summary>
-    Active
+    Active,
+
+    /// <summary>Cerrada por un agente; no acepta nuevos mensajes.</summary>
+    Closed
 }

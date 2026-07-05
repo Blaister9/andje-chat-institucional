@@ -43,6 +43,15 @@ public sealed class PostgresConversationStore(ChatDbContext db) : IConversationS
         return [.. conversations.Select(c => c.ToDto())];
     }
 
+    public async Task<ConversationDto?> GetConversationAsync(
+        Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        var conversation = await db.Conversations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == conversationId, cancellationToken);
+        return conversation?.ToDto();
+    }
+
     public async Task<IReadOnlyList<ChatMessageDto>?> GetMessagesAsync(
         Guid conversationId, CancellationToken cancellationToken = default)
     {
@@ -71,6 +80,11 @@ public sealed class PostgresConversationStore(ChatDbContext db) : IConversationS
         if (conversation is null)
         {
             return null;
+        }
+
+        if (conversation.Status == ConversationStatus.Closed)
+        {
+            throw new ConversationClosedException();
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -104,5 +118,32 @@ public sealed class PostgresConversationStore(ChatDbContext db) : IConversationS
         await db.SaveChangesAsync(cancellationToken);
 
         return new AppendMessageResult(message.ToDto(), conversation.ToDto(), statusChanged);
+    }
+
+    public async Task<ConversationDto?> CloseConversationAsync(
+        Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        var conversation = await db.Conversations
+            .FirstOrDefaultAsync(c => c.Id == conversationId, cancellationToken);
+        if (conversation is null)
+        {
+            return null;
+        }
+
+        if (conversation.Status == ConversationStatus.Closed)
+        {
+            return conversation.ToDto();
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        conversation.Status = ConversationStatus.Closed;
+        conversation.ClosedAtUtc = now;
+        conversation.UpdatedAtUtc = now;
+
+        db.AuditEvents.Add(AuditEvent.For(
+            "conversation.closed", nameof(SenderType.Agent), conversationId));
+
+        await db.SaveChangesAsync(cancellationToken);
+        return conversation.ToDto();
     }
 }

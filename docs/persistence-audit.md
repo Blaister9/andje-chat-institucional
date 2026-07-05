@@ -1,91 +1,65 @@
-# Persistencia y auditoría — fase 02
+# Persistencia y auditoria
 
-Cómo persiste el chat institucional sus datos y qué eventos de auditoría
-emite. Complementa a [domain-model.md](domain-model.md).
+Fase 03 agrega cierre persistido de conversaciones y auditoria
+`conversation.closed` sobre la base de fase 02.
 
-## Arquitectura de persistencia
+## Arquitectura
 
-- **EF Core 8 + Npgsql** sobre PostgreSQL 16.
-- `ChatDbContext` ([backend/src/Andje.Chat.Api/Data/ChatDbContext.cs](../backend/src/Andje.Chat.Api/Data/ChatDbContext.cs)).
-- El hub no conoce EF: depende de la abstracción `IConversationStore`.
-  - `PostgresConversationStore`: implementación registrada en ejecución normal.
-  - `InMemoryConversationStore`: usada por las pruebas del flujo realtime
-    (sin base de datos).
-- Cada escritura (conversación nueva, mensaje, activación) guarda entidad +
-  eventos de auditoría en **un único `SaveChanges`** = una sola transacción.
+- EF Core 8 + Npgsql sobre PostgreSQL 16.
+- `ChatDbContext` modela `Conversations`, `Messages` y `AuditEvents`.
+- `ChatHub` depende de `IConversationStore`.
+- `PostgresConversationStore` es la implementacion normal.
+- `InMemoryConversationStore` se mantiene para pruebas rapidas del hub.
+- Cada escritura guarda cambios de dominio y auditoria en un unico
+  `SaveChangesAsync`.
 
-## Esquema (migración `InitialCreate`)
+## Esquema
 
-| Tabla | Columnas | Notas |
-| --- | --- | --- |
-| `Conversations` | `Id` uuid PK, `VisitorDisplayName` varchar(80) null, `Status` varchar(20), `CreatedAtUtc`, `UpdatedAtUtc`, `ClosedAtUtc` null | `Status`: `Pending` \| `Active` (cierre en fase futura, la columna `ClosedAtUtc` ya existe). Índice por `CreatedAtUtc`. |
-| `Messages` | `Id` uuid PK, `ConversationId` uuid FK (cascade), `SenderType` varchar(20), `Body` varchar(2000), `CreatedAtUtc` | Inmutables (solo INSERT). Índice `(ConversationId, CreatedAtUtc)`. |
-| `AuditEvents` | `Id` uuid PK, `ConversationId` uuid null, `EventType` varchar(100), `ActorType` varchar(20), `DataJson` jsonb null, `CreatedAtUtc` | Solo INSERT. Índices por `ConversationId` y `CreatedAtUtc`. |
+La migracion inicial ya contiene los campos necesarios para fase 03:
 
-Los timestamps son `timestamptz` y siempre UTC.
-
-## Catálogo de eventos de auditoría
-
-| EventType | Actor | Cuándo se dispara | DataJson |
-| --- | --- | --- | --- |
-| `conversation.started` | `Visitor` | El visitante inicia una conversación desde el widget | `null` |
-| `message.sent.visitor` | `Visitor` | El visitante envía un mensaje | `{"messageId": "…"}` |
-| `message.sent.agent` | `Agent` | El agente envía un mensaje | `{"messageId": "…"}` |
-| `conversation.activated` | `Agent` | La primera respuesta de un agente pasa la conversación de `Pending` a `Active` | `{"messageId": "…"}` |
-
-**Regla:** `DataJson` lleva referencias (ids), nunca contenido de mensajes ni
-datos personales. Los logs de la aplicación tampoco registran contenido.
-
-## Migraciones
-
-- Se aplican **automáticamente al arrancar la API** (`Database:AutoMigrate`,
-  `true` por defecto) — así `docker compose up` deja el esquema listo sin
-  pasos manuales. Las pruebas del hub lo desactivan.
-- Crear una migración nueva (requiere el tool local, ya versionado en
-  `backend/dotnet-tools.json`):
-
-```bash
-cd backend
-dotnet tool restore
-dotnet dotnet-ef migrations add NombreDeLaMigracion --project src/Andje.Chat.Api --output-dir Data/Migrations
-```
-
-- La CLI usa `DesignTimeDbContextFactory` (localhost:5433); no necesita la
-  base arriba para generar migraciones, solo para aplicarlas.
-
-## Configuración de conexión
-
-| Contexto | Fuente |
+| Tabla | Campos relevantes |
 | --- | --- |
-| Docker Compose (api) | Variable `ConnectionStrings__ChatDb` (host `db:5432`) |
-| `dotnet run` local | `appsettings.json` → `localhost:5433` |
-| Pruebas de integración | `localhost:${ANDJE_DB_PORT:-5433}`, base `andje_chat_test` |
+| `Conversations` | `Status`, `CreatedAtUtc`, `UpdatedAtUtc`, `ClosedAtUtc` |
+| `Messages` | `ConversationId`, `SenderType`, `Body`, `CreatedAtUtc` |
+| `AuditEvents` | `ConversationId`, `EventType`, `ActorType`, `DataJson`, `CreatedAtUtc` |
 
-El puerto host por defecto es **5433** (no 5432) para no chocar con
-instalaciones locales de PostgreSQL; se cambia con `ANDJE_DB_PORT` (ver
-`.env.example`). La contraseña por defecto `andje_dev_local` es solo de
-desarrollo local.
+No se requiere migracion nueva para fase 03 porque `Status` se persiste como
+texto y `ClosedAtUtc` ya existia como nullable.
 
-## Estrategia de pruebas
+## Eventos de auditoria
 
-- `RealtimeFlowTests` / `SmokeTests`: hub completo con
-  `InMemoryConversationStore` (rápidas, sin Docker).
-- `PostgresConversationStoreTests`: contra PostgreSQL real
-  (`docker compose up -d db`). Recrean la base `andje_chat_test` desde cero y
-  aplican la migración en cada ejecución (valida reproducibilidad). Si la
-  base no está disponible se **omiten** con un aviso, no fallan.
+| EventType | ActorType | Disparador | DataJson |
+| --- | --- | --- | --- |
+| `conversation.started` | `Visitor` | El visitante inicia una conversacion | `null` |
+| `message.sent.visitor` | `Visitor` | El visitante envia un mensaje | `{ "messageId": "..." }` |
+| `message.sent.agent` | `Agent` | El agente envia un mensaje | `{ "messageId": "..." }` |
+| `conversation.activated` | `Agent` | Primera respuesta del agente cambia `Pending` a `Active` | `{ "messageId": "..." }` |
+| `conversation.closed` | `Agent` | La consola cierra una conversacion | `null` |
 
-## Inspección manual de la base
+Reglas de privacidad:
 
-```bash
-docker exec -it andje-chat-db-1 psql -U andje -d andje_chat
+- `DataJson` contiene referencias tecnicas, no cuerpo de mensajes.
+- Los logs de API no registran texto de mensajes.
+- Los timestamps se guardan en UTC.
 
--- conversaciones
-SELECT "Id", "Status", "VisitorDisplayName", "CreatedAtUtc" FROM "Conversations" ORDER BY "CreatedAtUtc";
+## Consultas manuales
 
--- mensajes de una conversación
-SELECT "SenderType", "Body", "CreatedAtUtc" FROM "Messages" WHERE "ConversationId" = '<id>' ORDER BY "CreatedAtUtc";
+```sql
+SELECT "Id", "VisitorDisplayName", "Status", "CreatedAtUtc", "UpdatedAtUtc", "ClosedAtUtc"
+FROM "Conversations"
+ORDER BY "CreatedAtUtc" DESC
+LIMIT 5;
 
--- auditoría
-SELECT "EventType", "ActorType", "DataJson", "CreatedAtUtc" FROM "AuditEvents" ORDER BY "CreatedAtUtc";
+SELECT "ConversationId", "SenderType", LEFT("Body", 40) AS "BodyPreview", "CreatedAtUtc"
+FROM "Messages"
+ORDER BY "CreatedAtUtc" DESC
+LIMIT 10;
+
+SELECT "ConversationId", "EventType", "ActorType", "DataJson", "CreatedAtUtc"
+FROM "AuditEvents"
+ORDER BY "CreatedAtUtc" DESC
+LIMIT 10;
 ```
+
+La evidencia esperada para fase 03 es una conversacion con `Status = Closed`,
+`ClosedAtUtc` no nulo y un evento `conversation.closed`.

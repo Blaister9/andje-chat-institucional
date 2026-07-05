@@ -1,122 +1,76 @@
-# Modelo de dominio — Chat institucional ANDJE
+# Modelo de dominio - Chat institucional ANDJE
 
-> Actualizado en la fase 02: `Conversation`, `Message` y `AuditEvent` ya están
-> implementadas y persistidas en PostgreSQL (ver
-> [persistence-audit.md](persistence-audit.md)). `Visitor` y `Agent` como
-> tablas propias llegan con la fase de autenticación; por ahora el visitante
-> es anónimo y su nombre opcional vive en `Conversation.VisitorDisplayName`.
+> Actualizado en fase 03: el ciclo minimo operativo de conversacion es
+> `Pending -> Active -> Closed`. `Conversation`, `Message` y `AuditEvent`
+> estan implementadas y persistidas en PostgreSQL.
 
-## Visión general
+## Entidades implementadas
 
-```
-Visitor 1──────* Conversation *──────1 Agent (opcional hasta asignación)
-                    │ 1
-                    │
-                    * Message
-                    │
-                    * AuditEvent (también referencia a Agent/system)
-```
+### Conversation
 
-## Entidades
+Hilo entre un visitante y la consola de agentes. En esta fase no existe
+asignacion explicita de agente ni autenticacion real.
 
-### Visitor (ciudadano)
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `Id` | uuid | Identificador de la conversacion |
+| `VisitorDisplayName` | varchar(80) null | Nombre opcional indicado por el visitante |
+| `Status` | varchar(20) | `Pending`, `Active` o `Closed` |
+| `CreatedAtUtc` | timestamptz | Creacion en UTC |
+| `UpdatedAtUtc` | timestamptz | Ultima modificacion en UTC |
+| `ClosedAtUtc` | timestamptz null | Momento UTC del cierre por consola |
 
-Persona que abre el chat desde el widget. Anónima en el MVP: se identifica
-por un identificador de sesión, con datos personales mínimos y opcionales.
+### Ciclo de vida
 
-| Campo         | Tipo        | Notas                                          |
-| ------------- | ----------- | ---------------------------------------------- |
-| Id            | UUID        |                                                |
-| DisplayName   | string?     | Nombre que el ciudadano decide dar (opcional)  |
-| ContactEmail  | string?     | Opcional, solo si pide seguimiento             |
-| CreatedAt     | timestamptz |                                                |
-
-*Minimización de datos:* no se piden cédula, teléfono ni datos sensibles.
-Ver [privacy-security-baseline.md](privacy-security-baseline.md).
-
-### Agent (agente interno)
-
-Funcionario o contratista que atiende conversaciones desde la consola.
-En fases futuras se vincula al directorio institucional (SSO).
-
-| Campo       | Tipo        | Notas                                    |
-| ----------- | ----------- | ---------------------------------------- |
-| Id          | UUID        |                                          |
-| FullName    | string      |                                          |
-| Email       | string      | Correo institucional, único              |
-| Role        | enum        | `Agent`, `Supervisor`, `Admin`           |
-| IsActive    | bool        | Baja lógica; nunca se borra (auditoría)  |
-| CreatedAt   | timestamptz |                                          |
-
-### Conversation (conversación) — implementada (fase 02)
-
-Hilo entre un visitante y (a lo sumo) un agente asignado.
-
-| Campo              | Tipo        | Notas                                       |
-| ------------------ | ----------- | ------------------------------------------- |
-| Id                 | UUID        |                                             |
-| VisitorDisplayName | string?     | Máx. 80; sustituye a VisitorId hasta la fase de autenticación |
-| Status             | enum (texto)| `Pending` \| `Active` (`Closed` en fase futura) |
-| CreatedAtUtc       | timestamptz |                                             |
-| UpdatedAtUtc       | timestamptz | Última escritura sobre la conversación      |
-| ClosedAtUtc        | timestamptz?| Columna ya creada; el cierre aún no se implementa |
-
-Campos previstos para fases futuras: `AgentId` (FK, con autenticación) y
-`Channel` (cuando exista más de un canal).
-
-**Ciclo de vida (`Status`):**
-
-```
-Pending ──(agente toma la conversación)──▶ Active ──(cierre)──▶ Closed
-   │                                                              ▲
-   └──(visitante abandona / timeout)──────────────────────────────┘
+```text
+Pending -> Active -> Closed
 ```
 
-### Message (mensaje) — implementada (fase 02, tabla `Messages`)
+- `Pending`: conversacion iniciada por el visitante; aun no hay respuesta de agente.
+- `Active`: ya hubo al menos una respuesta del agente.
+- `Closed`: el agente cerro la conversacion desde consola; no se permiten nuevos mensajes.
 
-| Campo          | Tipo        | Notas                                       |
-| -------------- | ----------- | ------------------------------------------- |
-| Id             | UUID        |                                             |
-| ConversationId | UUID (FK)   | Borrado en cascada con la conversación      |
-| SenderType     | enum (texto)| `Visitor`, `Agent` (`System` en fase futura)|
-| Body           | varchar(2000)| Texto plano; mismo límite que valida el hub |
-| CreatedAtUtc   | timestamptz | Inmutable: los mensajes no se editan        |
+Reglas:
 
-Campos previstos para fases futuras: `SenderId` (con autenticación) y
-`Metadata` jsonb (adjuntos, IA asistida). Hacia los clientes el DTO conserva
-los nombres `Content`/`SentAt` de la fase 01.
+- La primera respuesta del agente cambia `Pending` a `Active`.
+- `CloseConversation` cambia `Pending` o `Active` a `Closed`, setea `ClosedAtUtc`
+  y actualiza `UpdatedAtUtc`.
+- Cerrar una conversacion ya cerrada es idempotente y no duplica auditoria.
+- El historial sigue consultable despues del cierre.
 
-### AuditEvent (evento de auditoría) — implementada (fase 02)
+### Message
 
-Registro inmutable (solo inserción) de todo hecho relevante.
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `Id` | uuid | Identificador del mensaje |
+| `ConversationId` | uuid FK | Conversacion propietaria |
+| `SenderType` | varchar(20) | `Visitor` o `Agent` |
+| `Body` | varchar(2000) | Texto plano del mensaje |
+| `CreatedAtUtc` | timestamptz | Insercion en UTC |
 
-| Campo          | Tipo        | Notas                                        |
-| -------------- | ----------- | -------------------------------------------- |
-| Id             | UUID        |                                              |
-| ConversationId | UUID?       | Nulo para eventos globales (p. ej. login futuro) |
-| ActorType      | string      | `Visitor`, `Agent`, `System`                 |
-| EventType      | varchar(100)| Catálogo actual en [persistence-audit.md](persistence-audit.md) |
-| DataJson       | jsonb?      | Solo referencias (ids); nunca contenido de mensajes |
-| CreatedAtUtc   | timestamptz |                                              |
+Los mensajes son inmutables. No se aceptan mensajes vacios ni mensajes nuevos
+cuando la conversacion esta `Closed`.
 
-Campo previsto para fases futuras: `ActorId` (con autenticación).
+### AuditEvent
 
-## Reglas de negocio iniciales
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `Id` | uuid | Identificador del evento |
+| `ConversationId` | uuid null | Conversacion asociada |
+| `EventType` | varchar(100) | Catalogo en `docs/persistence-audit.md` |
+| `ActorType` | varchar(20) | `Visitor`, `Agent` o `System` futuro |
+| `DataJson` | jsonb null | Referencias tecnicas, nunca cuerpo de mensajes |
+| `CreatedAtUtc` | timestamptz | Insercion en UTC |
 
-1. Una conversación `Pending` no tiene agente; pasa a `Active` solo cuando un
-   agente la toma (queda `AuditEvent: agent.assigned`).
-2. Mensajes y eventos de auditoría son inmutables: nunca UPDATE ni DELETE
-   desde la aplicación.
-3. El cierre de conversación siempre registra quién la cerró (agente,
-   visitante o sistema por inactividad).
-4. La retención y anonimización de datos personales sigue la política de la
-   línea base de privacidad (pendiente de definir plazos con el área
-   jurídica).
+## Datos personales y limites
 
-## Fuera del modelo (fases futuras)
+El visitante sigue siendo anonimo para el sistema. El unico dato opcional que
+se solicita en esta fase es el nombre de visualizacion. No se piden documento,
+telefono, direccion, correo, expediente ni otros datos sensibles.
 
-- Departamentos/colas múltiples y horarios de atención.
-- Adjuntos de archivos.
-- Sugerencias de IA (el campo `Metadata` de `Message` es el punto de
-  extensión previsto).
-- Encuestas de satisfacción post-conversación.
+## Fuera de esta fase
+
+- Autenticacion real y directorio institucional.
+- Asignacion explicita de agente.
+- Departamentos, transferencia, metricas o dashboard administrativo.
+- Adjuntos, IA, retencion automatica y anonimizacion automatica.
