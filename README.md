@@ -76,18 +76,28 @@ npm run dev
 ## Pruebas y builds
 
 ```powershell
+docker compose up -d db
 dotnet test backend/Andje.Chat.sln
 
 cd apps/console
+npm ci
 npm run build
 
 cd ../widget
+npm ci
 npm run build
+
+cd ../..
+docker compose config -q
 ```
 
 Las pruebas de persistencia usan PostgreSQL real en `localhost:5433` y la base
 `andje_chat_test`. Si la DB no esta disponible, esas pruebas se omiten con
 aviso; con `docker compose up -d db` deben ejecutarse.
+
+En CI se define `ANDJE_REQUIRE_POSTGRES_TESTS=true`, por lo que las pruebas de
+PostgreSQL fallan si la base no esta disponible. Los valores usados por CI son
+dev/test, no secretos institucionales.
 
 ## Widget embebible
 
@@ -105,6 +115,7 @@ conversacion activa tras recargar. Esto es conveniencia local, no seguridad.
 - [Persistencia y auditoria](docs/persistence-audit.md)
 - [Prueba manual realtime](docs/manual-test-realtime.md)
 - [Fundacion de acceso de consola](docs/security-access-foundation.md)
+- [CI y quality gates](docs/ci-quality-gates.md)
 - [Linea base de seguridad y privacidad](docs/privacy-security-baseline.md)
 - [ADR 0001 - Arquitectura inicial](docs/adr/0001-architecture.md)
 

@@ -14,6 +14,12 @@ namespace Andje.Chat.Api.Tests;
 /// </summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
+    private readonly bool _requirePostgres =
+        string.Equals(
+            Environment.GetEnvironmentVariable("ANDJE_REQUIRE_POSTGRES_TESTS"),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+
     public bool Available { get; private set; }
     public string SkipReason { get; private set; }
 
@@ -45,6 +51,12 @@ public sealed class PostgresFixture : IAsyncLifetime
         {
             Available = false;
             SkipReason = $"{SkipReason} Detalle: {ex.GetBaseException().Message}";
+            if (_requirePostgres)
+            {
+                throw new InvalidOperationException(
+                    "PostgreSQL tests are required but the test database is unavailable.",
+                    ex);
+            }
         }
     }
 
