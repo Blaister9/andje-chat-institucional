@@ -19,7 +19,7 @@ namespace Andje.Chat.Api.Hubs;
 /// visitante o consola. Bloqueante a resolver antes de exponer fuera de
 /// localhost (ver docs/privacy-security-baseline.md).
 /// </summary>
-public sealed class ChatHub(InMemoryConversationStore store) : Hub
+public sealed class ChatHub(IConversationStore store) : Hub
 {
     private const string AgentsGroup = "agents";
     private const int MaxMessageLength = 2000;
@@ -31,13 +31,12 @@ public sealed class ChatHub(InMemoryConversationStore store) : Hub
     public async Task<ConversationDto> StartConversation(StartConversationRequest? request)
     {
         var displayName = Normalize(request?.DisplayName, MaxDisplayNameLength);
-        var conversation = store.Start(string.IsNullOrEmpty(displayName) ? null : displayName);
+        var conversation = await store.StartConversationAsync(
+            string.IsNullOrEmpty(displayName) ? null : displayName);
 
         await Groups.AddToGroupAsync(Context.ConnectionId, ConversationGroup(conversation.Id));
-
-        var dto = conversation.ToDto();
-        await Clients.Group(AgentsGroup).SendAsync("ConversationStarted", dto);
-        return dto;
+        await Clients.Group(AgentsGroup).SendAsync("ConversationStarted", conversation);
+        return conversation;
     }
 
     /// <summary>
@@ -46,9 +45,10 @@ public sealed class ChatHub(InMemoryConversationStore store) : Hub
     /// </summary>
     public async Task<IReadOnlyList<ChatMessageDto>> JoinConversation(Guid conversationId)
     {
-        var conversation = GetConversationOrThrow(conversationId);
+        var messages = await store.GetMessagesAsync(conversationId)
+            ?? throw new HubException("La conversación no existe.");
         await Groups.AddToGroupAsync(Context.ConnectionId, ConversationGroup(conversationId));
-        return [.. conversation.GetMessages().Select(m => m.ToDto())];
+        return messages;
     }
 
     /// <summary>
@@ -58,16 +58,13 @@ public sealed class ChatHub(InMemoryConversationStore store) : Hub
     public async Task<IReadOnlyList<ConversationDto>> JoinAgentConsole()
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, AgentsGroup);
-        return [.. store.GetAll().Select(c => c.ToDto())];
+        return await store.GetConversationsAsync();
     }
 
     /// <summary>Historial de una conversación (la consola lo pide al seleccionarla).</summary>
-    public Task<IReadOnlyList<ChatMessageDto>> GetConversationHistory(Guid conversationId)
-    {
-        var conversation = GetConversationOrThrow(conversationId);
-        IReadOnlyList<ChatMessageDto> history = [.. conversation.GetMessages().Select(m => m.ToDto())];
-        return Task.FromResult(history);
-    }
+    public async Task<IReadOnlyList<ChatMessageDto>> GetConversationHistory(Guid conversationId) =>
+        await store.GetMessagesAsync(conversationId)
+            ?? throw new HubException("La conversación no existe.");
 
     public Task SendVisitorMessage(SendVisitorMessageRequest request) =>
         SendMessageAsync(request.ConversationId, SenderType.Visitor, request.Content);
@@ -83,29 +80,18 @@ public sealed class ChatHub(InMemoryConversationStore store) : Hub
             throw new HubException("El mensaje no puede estar vacío.");
         }
 
-        var conversation = GetConversationOrThrow(conversationId);
-        var (message, statusChanged) = conversation.AddMessage(senderType, text);
-        var dto = message.ToDto();
+        var result = await store.AppendMessageAsync(conversationId, senderType, text)
+            ?? throw new HubException("La conversación no existe.");
 
         // El emisor recibe su propio mensaje por eco del grupo: los clientes
         // pintan solo lo que confirma el servidor.
-        await Clients.Group(ConversationGroup(conversationId)).SendAsync("MessageReceived", dto);
-        await Clients.Group(AgentsGroup).SendAsync("MessageReceived", dto);
+        await Clients.Group(ConversationGroup(conversationId)).SendAsync("MessageReceived", result.Message);
+        await Clients.Group(AgentsGroup).SendAsync("MessageReceived", result.Message);
 
-        if (statusChanged)
+        if (result.StatusChanged)
         {
-            await Clients.Group(AgentsGroup).SendAsync("ConversationUpdated", conversation.ToDto());
+            await Clients.Group(AgentsGroup).SendAsync("ConversationUpdated", result.Conversation);
         }
-    }
-
-    private Conversation GetConversationOrThrow(Guid conversationId)
-    {
-        if (!store.TryGet(conversationId, out var conversation))
-        {
-            throw new HubException("La conversación no existe.");
-        }
-
-        return conversation;
     }
 
     private static string ConversationGroup(Guid conversationId) => $"conversation:{conversationId}";

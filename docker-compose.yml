@@ -11,7 +11,8 @@ services:
       # provenir de un gestor de secretos.
       POSTGRES_PASSWORD: ${ANDJE_DB_PASSWORD:-andje_dev_local}
     ports:
-      - "5432:5432"
+      # 5433 en el host para no chocar con instalaciones locales de PostgreSQL.
+      - "${ANDJE_DB_PORT:-5433}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -26,6 +27,7 @@ services:
       dockerfile: src/Andje.Chat.Api/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__ChatDb: Host=db;Port=5432;Database=andje_chat;Username=andje;Password=${ANDJE_DB_PASSWORD:-andje_dev_local}
     ports:
       - "8080:8080"
     depends_on:
