@@ -1,12 +1,11 @@
 using Andje.Chat.Api.Contracts;
 using Microsoft.AspNetCore.Http.Connections;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Andje.Chat.Api.Tests;
 
-public class RealtimeFlowTests(WebApplicationFactory<Program> factory) : IClassFixture<WebApplicationFactory<Program>>
+public class RealtimeFlowTests(TestWebApplicationFactory factory) : IClassFixture<TestWebApplicationFactory>
 {
     private static readonly TimeSpan EventTimeout = TimeSpan.FromSeconds(10);
 
