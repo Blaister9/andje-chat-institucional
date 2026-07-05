@@ -4,7 +4,7 @@ Prototipo MVP de chat institucional para una entidad publica colombiana. Busca
 proveer una alternativa controlada a servicios externos tipo tawk.to, con
 trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 
-> Estado: fase 04 - fundacion local de acceso de consola. No apto para
+> Estado: fase 06 - hardening de dependencias y secret scanning. No apto para
 > produccion.
 
 ## Alcance actual
@@ -18,6 +18,7 @@ trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 - Cierre desde consola, notificacion realtime y bloqueo de nuevos mensajes.
 - Acceso local de desarrollo para consola de agentes con token opaco temporal.
 - Auditoria minima: inicio, mensajes, activacion y cierre.
+- CI con pruebas PostgreSQL obligatorias, auditorias de dependencias y Gitleaks.
 
 ## Fuera de alcance
 
@@ -89,6 +90,7 @@ npm run build
 
 cd ../..
 docker compose config -q
+docker run --rm -v "${PWD}:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 detect --source=/repo --no-git --redact --config=/repo/.gitleaks.toml
 ```
 
 Las pruebas de persistencia usan PostgreSQL real en `localhost:5433` y la base
@@ -116,6 +118,7 @@ conversacion activa tras recargar. Esto es conveniencia local, no seguridad.
 - [Prueba manual realtime](docs/manual-test-realtime.md)
 - [Fundacion de acceso de consola](docs/security-access-foundation.md)
 - [CI y quality gates](docs/ci-quality-gates.md)
+- [Dependency and secret hardening](docs/dependency-secret-hardening.md)
 - [Linea base de seguridad y privacidad](docs/privacy-security-baseline.md)
 - [ADR 0001 - Arquitectura inicial](docs/adr/0001-architecture.md)
 

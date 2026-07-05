@@ -1,0 +1,12 @@
+title = "andje-chat-institucional gitleaks configuration"
+
+[allowlist]
+description = "Valores locales/dev documentados; no son secretos institucionales."
+regexes = [
+  '''andje_dev_local''',
+  '''andje-agent-local''',
+  '''change-me-local-only''',
+]
+paths = [
+  '''^\.env\.example$''',
+]

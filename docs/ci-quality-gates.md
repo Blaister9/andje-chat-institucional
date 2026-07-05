@@ -1,7 +1,7 @@
 # CI quality gates
 
-La microfase 05 agrega un workflow de GitHub Actions para validar pull requests
-y pushes hacia `develop` y `main`.
+El workflow de GitHub Actions valida pull requests y pushes hacia `develop` y
+`main`. En fase 06 se agrego secret scanning y se endurecieron auditorias.
 
 ## Workflow
 
@@ -32,6 +32,7 @@ El job principal valida:
 - Build de consola con `npm ci` y `npm run build`.
 - Build de widget con `npm ci` y `npm run build`.
 - `docker compose config -q`.
+- Gitleaks sobre el arbol de trabajo.
 - `dotnet list ... package --vulnerable --include-transitive`.
 - `npm audit --audit-level=high` para consola y widget.
 - `.env` no versionado.
@@ -78,6 +79,7 @@ npm run build
 
 cd ..\..
 docker compose config -q
+docker run --rm -v "${PWD}:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 detect --source=/repo --no-git --redact --config=/repo/.gitleaks.toml
 ```
 
 Para simular el comportamiento estricto de CI en pruebas PostgreSQL:
@@ -90,29 +92,30 @@ dotnet test backend/Andje.Chat.sln
 
 ## Auditorias
 
-Las auditorias de dependencias se ejecutan y quedan visibles en logs:
+Las auditorias de dependencias son bloqueantes:
 
-- `.NET`: `dotnet list package --vulnerable --include-transitive`
+- `.NET`: `dotnet list package --vulnerable --include-transitive --format json`
+  y validacion del JSON para fallar si aparecen vulnerabilidades.
 - npm consola/widget: `npm audit --audit-level=high`
 
-Estado inicial de fase 05:
+Estado despues de fase 06:
 
-- `.NET` reporta vulnerabilidades transitivas en paquetes del proyecto de
-  tests. El comando reporta el hallazgo y no falla el job.
-- npm reporta una vulnerabilidad Vite/esbuild que requiere upgrade mayor segun
-  `npm audit fix --force`; por eso los pasos npm audit estan temporalmente como
-  `continue-on-error: true`.
+- `.NET` no reporta vulnerabilidades conocidas en los origenes configurados.
+- npm no reporta vulnerabilidades high/critical en consola ni widget.
+- `npm audit` ya no usa `continue-on-error`.
 
-Los gates bloqueantes son `dotnet test`, builds frontend y `docker compose
-config -q`. Una microfase futura debe actualizar dependencias y volver las
-auditorias npm bloqueantes.
+## Secret scanning
+
+CI ejecuta Gitleaks `v8.30.1` con `.gitleaks.toml`. El scanner es bloqueante:
+si encuentra un secreto, el job falla. La configuracion solo permite valores
+dev/test documentados (`andje_dev_local`, `andje-agent-local`,
+`change-me-local-only`) y `.env.example`.
 
 ## Pendientes
 
 - Configurar branch protection en GitHub.
 - Marcar el workflow como required check para `develop` y `main`.
 - Activar GitHub secret scanning.
-- Agregar Gitleaks u otra herramienta dedicada de secret scanning.
 - Agregar CI completo que levante todo Docker Compose y haga smoke test HTTP.
 - Agregar despliegue solo cuando exista estrategia de ambientes.
 
