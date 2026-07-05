@@ -1,10 +1,9 @@
 using Microsoft.AspNetCore.Http.Connections;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Andje.Chat.Api.Tests;
 
-public class SmokeTests(WebApplicationFactory<Program> factory) : IClassFixture<WebApplicationFactory<Program>>
+public class SmokeTests(TestWebApplicationFactory factory) : IClassFixture<TestWebApplicationFactory>
 {
     [Fact]
     public async Task Health_responde_200_con_estado_healthy()

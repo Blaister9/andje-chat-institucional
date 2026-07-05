@@ -1,8 +1,10 @@
 # Modelo de dominio — Chat institucional ANDJE
 
-> Fase 00: este modelo es la referencia conceptual para la fase de
-> persistencia (EF Core + migraciones). Aún no hay entidades implementadas
-> en código.
+> Actualizado en la fase 02: `Conversation`, `Message` y `AuditEvent` ya están
+> implementadas y persistidas en PostgreSQL (ver
+> [persistence-audit.md](persistence-audit.md)). `Visitor` y `Agent` como
+> tablas propias llegan con la fase de autenticación; por ahora el visitante
+> es anónimo y su nombre opcional vive en `Conversation.VisitorDisplayName`.
 
 ## Visión general
 
@@ -46,19 +48,21 @@ En fases futuras se vincula al directorio institucional (SSO).
 | IsActive    | bool        | Baja lógica; nunca se borra (auditoría)  |
 | CreatedAt   | timestamptz |                                          |
 
-### Conversation (conversación)
+### Conversation (conversación) — implementada (fase 02)
 
 Hilo entre un visitante y (a lo sumo) un agente asignado.
 
-| Campo        | Tipo        | Notas                                        |
-| ------------ | ----------- | -------------------------------------------- |
-| Id           | UUID        |                                              |
-| VisitorId    | UUID (FK)   |                                              |
-| AgentId      | UUID? (FK)  | Nulo mientras espera en cola                 |
-| Status       | enum        | Ver ciclo de vida                            |
-| Channel      | string      | `widget` (único canal del MVP)               |
-| StartedAt    | timestamptz |                                              |
-| ClosedAt     | timestamptz?|                                              |
+| Campo              | Tipo        | Notas                                       |
+| ------------------ | ----------- | ------------------------------------------- |
+| Id                 | UUID        |                                             |
+| VisitorDisplayName | string?     | Máx. 80; sustituye a VisitorId hasta la fase de autenticación |
+| Status             | enum (texto)| `Pending` \| `Active` (`Closed` en fase futura) |
+| CreatedAtUtc       | timestamptz |                                             |
+| UpdatedAtUtc       | timestamptz | Última escritura sobre la conversación      |
+| ClosedAtUtc        | timestamptz?| Columna ya creada; el cierre aún no se implementa |
+
+Campos previstos para fases futuras: `AgentId` (FK, con autenticación) y
+`Channel` (cuando exista más de un canal).
 
 **Ciclo de vida (`Status`):**
 
@@ -68,31 +72,34 @@ Pending ──(agente toma la conversación)──▶ Active ──(cierre)─�
    └──(visitante abandona / timeout)──────────────────────────────┘
 ```
 
-### Message (mensaje)
+### Message (mensaje) — implementada (fase 02, tabla `Messages`)
 
 | Campo          | Tipo        | Notas                                       |
 | -------------- | ----------- | ------------------------------------------- |
 | Id             | UUID        |                                             |
-| ConversationId | UUID (FK)   |                                             |
-| SenderType     | enum        | `Visitor`, `Agent`, `System`                |
-| SenderId       | UUID?       | Nulo para `System`                          |
-| Content        | text        | Texto plano en el MVP                       |
-| Metadata       | jsonb       | Extensible (adjuntos, IA futura)            |
-| SentAt         | timestamptz | Inmutable: los mensajes no se editan        |
+| ConversationId | UUID (FK)   | Borrado en cascada con la conversación      |
+| SenderType     | enum (texto)| `Visitor`, `Agent` (`System` en fase futura)|
+| Body           | varchar(2000)| Texto plano; mismo límite que valida el hub |
+| CreatedAtUtc   | timestamptz | Inmutable: los mensajes no se editan        |
 
-### AuditEvent (evento de auditoría)
+Campos previstos para fases futuras: `SenderId` (con autenticación) y
+`Metadata` jsonb (adjuntos, IA asistida). Hacia los clientes el DTO conserva
+los nombres `Content`/`SentAt` de la fase 01.
+
+### AuditEvent (evento de auditoría) — implementada (fase 02)
 
 Registro inmutable (solo inserción) de todo hecho relevante.
 
 | Campo          | Tipo        | Notas                                        |
 | -------------- | ----------- | -------------------------------------------- |
 | Id             | UUID        |                                              |
-| ConversationId | UUID? (FK)  | Nulo para eventos globales (p. ej. login)    |
-| ActorType      | enum        | `Visitor`, `Agent`, `System`                 |
-| ActorId        | UUID?       |                                              |
-| EventType      | string      | `conversation.started`, `agent.assigned`, `conversation.closed`, … |
-| Data           | jsonb       | Detalle del evento                           |
-| OccurredAt     | timestamptz |                                              |
+| ConversationId | UUID?       | Nulo para eventos globales (p. ej. login futuro) |
+| ActorType      | string      | `Visitor`, `Agent`, `System`                 |
+| EventType      | varchar(100)| Catálogo actual en [persistence-audit.md](persistence-audit.md) |
+| DataJson       | jsonb?      | Solo referencias (ids); nunca contenido de mensajes |
+| CreatedAtUtc   | timestamptz |                                              |
+
+Campo previsto para fases futuras: `ActorId` (con autenticación).
 
 ## Reglas de negocio iniciales
 
