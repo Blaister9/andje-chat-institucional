@@ -29,11 +29,15 @@
       </p>
     </main>
 
-    <andje-chat-widget
-      titulo="Chat institucional ANDJE"
-      api-base="http://localhost:8080"
-    ></andje-chat-widget>
+    <andje-chat-widget titulo="Chat institucional ANDJE"></andje-chat-widget>
 
-    <script type="module" src="/src/andje-chat-widget.ts"></script>
+    <script type="module">
+      import './src/andje-chat-widget.ts';
+
+      const apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+      document
+        .querySelector('andje-chat-widget')
+        ?.setAttribute('api-base', apiBase);
+    </script>
   </body>
 </html>
