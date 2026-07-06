@@ -164,3 +164,25 @@ Riesgos LAN:
 - Login falla: verificar `ANDJE_AGENT_DEV_CODE` o usar `andje-agent-local`.
 - LAN no conecta: revisar firewall, IP local y `DEMO_ALLOWED_ORIGINS`.
 - CORS bloquea LAN: agregar origen exacto, nunca wildcard.
+
+## Demo detras de proxy HTTPS
+
+Para una demo controlada con TLS terminado por un proxy externo, mantenga el
+backend en red interna y configure `.env.demo` local no versionado:
+
+```text
+DEMO_API_URL=https://chat-demo.local
+DEMO_ALLOWED_ORIGINS=https://chat-demo.local,https://widget-demo.local
+ANDJE_FORWARDED_HEADERS_ENABLED=true
+ANDJE_FORWARDED_HEADERS_FORWARD_LIMIT=1
+ANDJE_FORWARDED_HEADERS_KNOWN_PROXIES=192.168.1.10
+ANDJE_FORWARDED_HEADERS_KNOWN_NETWORKS=
+ANDJE_HTTPS_REQUIRE=false
+ANDJE_HTTPS_HSTS=true
+```
+
+El proxy debe enviar `X-Forwarded-Proto=https`; opcionalmente
+`X-Forwarded-For` y `X-Forwarded-Host`. No use comodines de CORS ni confie en
+forwarded headers de proxies desconocidos.
+
+Detalles: [HTTPS and forwarded headers](https-forwarded-headers.md).

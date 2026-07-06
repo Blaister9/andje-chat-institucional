@@ -26,7 +26,11 @@ public static class SecurityStartupValidation
         AgentAccessOptions agentAccess,
         IReadOnlyList<string> corsOrigins,
         bool autoMigrate,
-        bool hasConnectionString)
+        bool hasConnectionString,
+        bool forwardedHeadersEnabled = false,
+        bool hasKnownForwardedProxyOrNetwork = false,
+        bool requireHttps = false,
+        bool useHsts = false)
     {
         var issues = new List<string>();
 
@@ -60,6 +64,21 @@ public static class SecurityStartupValidation
             InsecureDefaultCodes.Contains(agentAccess.DevelopmentAccessCode, StringComparer.Ordinal))
         {
             issues.Add("AgentAccess:DevelopmentAccessCode usa un valor local/dev conocido fuera de desarrollo.");
+        }
+
+        if (!isDevelopmentOrTest && forwardedHeadersEnabled && !hasKnownForwardedProxyOrNetwork)
+        {
+            issues.Add("ForwardedHeaders:Enabled es true fuera de desarrollo pero no hay KnownProxies ni KnownNetworks validos.");
+        }
+
+        if (isDevelopmentOrTest && useHsts)
+        {
+            issues.Add("Https:UseHsts esta habilitado en desarrollo/pruebas; no tendra efecto seguro en HTTP local.");
+        }
+
+        if (isDevelopmentOrTest && requireHttps)
+        {
+            issues.Add("Https:RequireHttps esta habilitado en desarrollo/pruebas; puede romper demos HTTP locales si no hay HTTPS configurado.");
         }
 
         return issues;

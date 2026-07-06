@@ -111,6 +111,79 @@ public class SecurityStartupValidationTests
         Assert.Empty(issues);
     }
 
+    [Fact]
+    public void Forwarded_headers_sin_proxy_conocido_fuera_de_desarrollo_es_problema()
+    {
+        var issues = SecurityStartupValidation.Collect(
+            isDevelopmentOrTest: false,
+            agentAccess: EnabledWithCode("codigo-fuerte"),
+            corsOrigins: ValidOrigins,
+            autoMigrate: false,
+            hasConnectionString: true,
+            forwardedHeadersEnabled: true,
+            hasKnownForwardedProxyOrNetwork: false);
+
+        Assert.Contains(issues, i => i.Contains("ForwardedHeaders"));
+    }
+
+    [Fact]
+    public void Forwarded_headers_sin_proxy_conocido_en_desarrollo_o_pruebas_no_es_fatal()
+    {
+        var issues = SecurityStartupValidation.Collect(
+            isDevelopmentOrTest: true,
+            agentAccess: EnabledWithCode("codigo-fuerte-local"),
+            corsOrigins: ValidOrigins,
+            autoMigrate: true,
+            hasConnectionString: true,
+            forwardedHeadersEnabled: true,
+            hasKnownForwardedProxyOrNetwork: false);
+
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public void Hsts_habilitado_en_desarrollo_o_pruebas_es_advertencia()
+    {
+        var issues = SecurityStartupValidation.Collect(
+            isDevelopmentOrTest: true,
+            agentAccess: EnabledWithCode("codigo-fuerte-local"),
+            corsOrigins: ValidOrigins,
+            autoMigrate: true,
+            hasConnectionString: true,
+            useHsts: true);
+
+        Assert.Contains(issues, i => i.Contains("Https:UseHsts"));
+    }
+
+    [Fact]
+    public void Require_https_explicito_fuera_de_desarrollo_es_permitido()
+    {
+        var issues = SecurityStartupValidation.Collect(
+            isDevelopmentOrTest: false,
+            agentAccess: EnabledWithCode("codigo-fuerte"),
+            corsOrigins: ValidOrigins,
+            autoMigrate: false,
+            hasConnectionString: true,
+            requireHttps: true);
+
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public void Forwarded_headers_con_proxy_conocido_fuera_de_desarrollo_es_permitido()
+    {
+        var issues = SecurityStartupValidation.Collect(
+            isDevelopmentOrTest: false,
+            agentAccess: EnabledWithCode("codigo-fuerte"),
+            corsOrigins: ValidOrigins,
+            autoMigrate: false,
+            hasConnectionString: true,
+            forwardedHeadersEnabled: true,
+            hasKnownForwardedProxyOrNetwork: true);
+
+        Assert.Empty(issues);
+    }
+
     private static AgentAccessOptions EnabledWithCode(string code) => new()
     {
         Enabled = true,

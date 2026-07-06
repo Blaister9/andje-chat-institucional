@@ -18,8 +18,9 @@ las respuestas:
 | `Permissions-Policy` | `geolocation=(), microphone=(), camera=()` | Desactiva APIs sensibles del navegador |
 | `Cache-Control` | `no-store` | El backend solo expone datos/tiempo real |
 
-- **HSTS**: `UseHsts()` se registra solo fuera de desarrollo. En el desarrollo
-  local (HTTP) no aplica; el header solo tiene efecto real bajo HTTPS.
+- **HSTS/HTTPS**: se activan solo por configuracion (`Https:UseHsts` y
+  `Https:RequireHttps`). Por defecto estan apagados para no romper localhost o
+  LAN HTTP. HSTS solo se aplica fuera de `Development`/`Test`.
 - **CSP**: pendiente. El backend no sirve UI y la consola/widget corren con
   Vite dev en esta fase. Una CSP estricta corresponde al despliegue estatico de
   produccion, no a este prototipo.
@@ -41,11 +42,10 @@ las respuestas:
 - Configurable: `RateLimiting:AgentSessionPermitLimit` (por defecto 10) y
   `RateLimiting:AgentSessionWindowSeconds` (por defecto 60). Al exceder se
   responde `429 Too Many Requests`.
-- **Limitacion conocida**: la particion usa la IP de la conexion directa.
-  Detras de un proxy reverso habria que honrar `X-Forwarded-For`; pendiente para
-  el despliegue. El hub SignalR no se limita por request en esta fase; el
-  control de abuso ahi se apoya en la validacion de token y en los limites de
-  tamano de mensaje.
+- Detras de un proxy reverso, la particion puede usar la IP real si
+  `ForwardedHeaders:Enabled=true` y el proxy/red esta listado en
+  `KnownProxies` o `KnownNetworks`. `UseForwardedHeaders` corre antes de rate
+  limiting.
 
 ## Limites de payload
 
@@ -71,6 +71,10 @@ Casos cubiertos:
 - `ConnectionStrings:ChatDb` ausente.
 - `Database:AutoMigrate=true` fuera de desarrollo.
 - `DevelopmentAccessCode` con un valor local/dev conocido fuera de desarrollo.
+- `ForwardedHeaders:Enabled=true` fuera de desarrollo sin proxies/redes
+  conocidos.
+- `Https:UseHsts` o `Https:RequireHttps` habilitados en desarrollo/pruebas
+  generan advertencia.
 
 Los mensajes nunca incluyen valores sensibles (codigo, cadena de conexion):
 solo describen el problema y la clave de configuracion.
@@ -90,8 +94,9 @@ Politica verificada en esta fase:
 
 - El acceso de consola es un codigo local, **no** autenticacion institucional
   (Entra ID/OIDC pendiente).
-- Todo el trafico local es HTTP; falta TLS/HTTPS real y HSTS efectivo.
-- El rate limiting no distingue IP real detras de proxy.
+- Todo el trafico local es HTTP; HTTPS/HSTS efectivo requiere proxy o TLS real.
+- La IP real detras de proxy solo se honra si forwarded headers esta habilitado
+  con proxies/redes conocidos.
 - No hay CSP de produccion ni despliegue estatico endurecido.
 - No hay retencion ni anonimizacion automatica de datos.
 

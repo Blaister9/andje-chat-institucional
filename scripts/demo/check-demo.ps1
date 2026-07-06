@@ -9,9 +9,20 @@ function Fail($message) {
 }
 
 function Assert-HttpOk($name, $url) {
-    try {
-        $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10
-    } catch {
+    $deadline = (Get-Date).AddSeconds(60)
+    $response = $null
+    do {
+        try {
+            $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10
+            if ($response.StatusCode -eq 200) {
+                return
+            }
+        } catch {
+            Start-Sleep -Seconds 2
+        }
+    } while ((Get-Date) -lt $deadline)
+
+    if ($null -eq $response) {
         Fail "$name no responde en $url."
     }
 
