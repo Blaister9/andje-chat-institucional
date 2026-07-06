@@ -24,15 +24,34 @@ public sealed class ChatHub(
     private const string AgentsGroup = "agents";
     private const int MaxMessageLength = 2000;
     private const int MaxDisplayNameLength = 80;
+    private const int MaxTopicLength = 60;
+    private const int MaxConsentVersionLength = 40;
+    private const string DefaultConsentVersion = "demo-v1";
 
     public string Ping() => "pong";
 
     /// <summary>El visitante inicia una conversacion y queda unido a ella.</summary>
     public async Task<ConversationDto> StartConversation(StartConversationRequest? request)
     {
-        var displayName = Normalize(request?.DisplayName, MaxDisplayNameLength);
+        if (request?.ConsentAccepted != true)
+        {
+            // El widget debe mostrar y capturar la aceptacion del aviso antes de iniciar.
+            throw new HubException("Consent is required.");
+        }
+
+        var displayName = Normalize(request.DisplayName, MaxDisplayNameLength);
+        var topic = Normalize(request.Topic, MaxTopicLength);
+        var consentVersion = Normalize(request.ConsentVersion, MaxConsentVersionLength);
+        if (string.IsNullOrEmpty(consentVersion))
+        {
+            consentVersion = DefaultConsentVersion;
+        }
+
         var conversation = await store.StartConversationAsync(
-            string.IsNullOrEmpty(displayName) ? null : displayName);
+            string.IsNullOrEmpty(displayName) ? null : displayName,
+            string.IsNullOrEmpty(topic) ? null : topic,
+            consentVersion,
+            DateTimeOffset.UtcNow);
 
         await Groups.AddToGroupAsync(Context.ConnectionId, ConversationGroup(conversation.Id));
         await Clients.Group(AgentsGroup).SendAsync("ConversationStarted", conversation);

@@ -13,7 +13,11 @@ namespace Andje.Chat.Api.Services;
 public sealed class PostgresConversationStore(ChatDbContext db) : IConversationStore
 {
     public async Task<ConversationDto> StartConversationAsync(
-        string? visitorDisplayName, CancellationToken cancellationToken = default)
+        string? visitorDisplayName,
+        string? topic = null,
+        string? consentVersion = null,
+        DateTimeOffset? consentAcceptedAtUtc = null,
+        CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
         var conversation = new Conversation
@@ -21,13 +25,25 @@ public sealed class PostgresConversationStore(ChatDbContext db) : IConversationS
             Id = Guid.NewGuid(),
             VisitorDisplayName = visitorDisplayName,
             Status = ConversationStatus.Pending,
+            Topic = topic,
+            ConsentAcceptedAtUtc = consentAcceptedAtUtc,
+            ConsentVersion = consentVersion,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
 
         db.Conversations.Add(conversation);
         db.AuditEvents.Add(AuditEvent.For(
-            "conversation.started", nameof(SenderType.Visitor), conversation.Id));
+            "conversation.started", nameof(SenderType.Visitor), conversation.Id,
+            topic is null ? null : new { topic }));
+
+        if (consentAcceptedAtUtc is not null)
+        {
+            // Auditoria de consentimiento: solo version y tema, nunca PII.
+            db.AuditEvents.Add(AuditEvent.For(
+                "conversation.consent_accepted", nameof(SenderType.Visitor), conversation.Id,
+                new { consentVersion, topic }));
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         return conversation.ToDto();

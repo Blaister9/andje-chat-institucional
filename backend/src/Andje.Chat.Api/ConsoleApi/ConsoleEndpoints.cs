@@ -90,6 +90,12 @@ public static class ConsoleEndpoints
             .OrderByDescending(c => c.UpdatedAtUtc)
             .ToListAsync(cancellationToken);
 
+        var ratings = await db.ConversationFeedback
+            .AsNoTracking()
+            .Select(f => new { f.ConversationId, f.Rating })
+            .ToListAsync(cancellationToken);
+        var ratingByConversation = ratings.ToDictionary(f => f.ConversationId, f => f.Rating);
+
         var result = conversations
             .Select(c =>
             {
@@ -111,7 +117,9 @@ public static class ConsoleEndpoints
                     c.ClosedAtUtc,
                     ToPreview(lastMessage?.Body),
                     lastMessage?.CreatedAtUtc,
-                    tags);
+                    tags,
+                    c.Topic,
+                    ratingByConversation.TryGetValue(c.Id, out var rating) ? rating : null);
             })
             .ToList();
 

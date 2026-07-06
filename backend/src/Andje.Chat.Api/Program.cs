@@ -4,6 +4,7 @@ using Andje.Chat.Api.Contracts;
 using Andje.Chat.Api.Data;
 using Andje.Chat.Api.Diagnostics;
 using Andje.Chat.Api.Hubs;
+using Andje.Chat.Api.PublicApi;
 using Andje.Chat.Api.Security;
 using Andje.Chat.Api.Services;
 using Microsoft.AspNetCore.RateLimiting;
@@ -176,6 +177,7 @@ app.MapGet("/api/diagnostics/status", async (
     return Results.Ok(status);
 });
 app.MapConsoleEndpoints();
+app.MapCitizenEndpoints();
 
 if (app.Environment.IsEnvironment("Test"))
 {

@@ -190,6 +190,21 @@ export function ConversationQueue({
                     <span className="unread">{unread[conversation.id]}</span>
                   )}
                 </span>
+                {(conversation.topic || conversation.feedbackRating) && (
+                  <span className="conversation-row meta">
+                    {conversation.topic && (
+                      <span className="conversation-topic">{conversation.topic}</span>
+                    )}
+                    {conversation.feedbackRating != null && (
+                      <span
+                        className="conversation-rating"
+                        title={`Calificacion del ciudadano: ${conversation.feedbackRating}/5`}
+                      >
+                        {'★'.repeat(conversation.feedbackRating)}
+                      </span>
+                    )}
+                  </span>
+                )}
                 <TagList tags={conversation.tags} compact />
               </button>
             </li>

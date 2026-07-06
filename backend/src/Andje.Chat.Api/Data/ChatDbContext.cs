@@ -7,6 +7,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
 {
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<ChatMessage> Messages => Set<ChatMessage>();
+    public DbSet<ConversationFeedback> ConversationFeedback => Set<ConversationFeedback>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<CannedResponse> CannedResponses => Set<CannedResponse>();
     public DbSet<ConversationTag> ConversationTags => Set<ConversationTag>();
@@ -21,7 +22,20 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
         {
             entity.Property(c => c.VisitorDisplayName).HasMaxLength(80);
             entity.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(c => c.Topic).HasMaxLength(60);
+            entity.Property(c => c.ConsentVersion).HasMaxLength(40);
             entity.HasIndex(c => c.CreatedAtUtc);
+        });
+
+        modelBuilder.Entity<ConversationFeedback>(entity =>
+        {
+            entity.Property(f => f.Comment).HasMaxLength(500);
+            entity.HasOne<Conversation>()
+                  .WithMany()
+                  .HasForeignKey(f => f.ConversationId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            // Un feedback por conversacion.
+            entity.HasIndex(f => f.ConversationId).IsUnique();
         });
 
         modelBuilder.Entity<ChatMessage>(entity =>

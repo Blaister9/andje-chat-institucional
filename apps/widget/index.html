@@ -4,30 +4,135 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="data:," />
-    <title>Demo — Widget de chat institucional ANDJE</title>
+    <title>Portal de orientacion - Chat institucional (demo)</title>
     <style>
+      :root {
+        --azul: #10316b;
+        --azul-claro: #1b4a99;
+        --texto: #1f2933;
+        --suave: #52606d;
+      }
+      * { box-sizing: border-box; }
       body {
         margin: 0;
         font-family: 'Segoe UI', system-ui, sans-serif;
         background: #f4f6f8;
-        color: #1f2933;
+        color: var(--texto);
       }
-      main {
-        max-width: 640px;
-        margin: 4rem auto;
-        padding: 0 1rem;
+      .topbar {
+        background: var(--azul);
+        color: #fff;
+        padding: 0.85rem 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .marca {
+        width: 34px; height: 34px; border-radius: 8px;
+        background: rgba(255, 255, 255, 0.16);
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 0.9rem;
+      }
+      .topbar .nombre { font-weight: 700; }
+      .topbar .lema { font-size: 0.72rem; opacity: 0.82; }
+      .aviso-demo {
+        background: #fff3c4; color: #7c5e10; text-align: center;
+        font-size: 0.8rem; padding: 0.4rem 1rem;
+      }
+      .hero {
+        background: linear-gradient(135deg, var(--azul), var(--azul-claro));
+        color: #fff; padding: 3rem 1.5rem;
+      }
+      .contenedor { max-width: 960px; margin: 0 auto; }
+      .hero h1 { margin: 0 0 0.6rem; font-size: 1.9rem; }
+      .hero p { margin: 0; max-width: 620px; font-size: 1rem; opacity: 0.94; }
+      .seccion { padding: 2.5rem 1.5rem; }
+      .seccion h2 { font-size: 1.25rem; margin: 0 0 0.5rem; }
+      .seccion .intro { color: var(--suave); max-width: 640px; }
+      .tarjetas {
+        display: grid; gap: 1rem; margin-top: 1.5rem;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+      .tarjeta {
+        background: #fff; border: 1px solid #d9e2ec; border-radius: 12px;
+        padding: 1.1rem 1.2rem;
+      }
+      .tarjeta .icono { font-size: 1.4rem; }
+      .tarjeta h3 { margin: 0.5rem 0 0.3rem; font-size: 1rem; }
+      .tarjeta p { margin: 0; font-size: 0.86rem; color: var(--suave); }
+      .cta {
+        margin-top: 2rem; background: #eef2f7; border-radius: 12px;
+        padding: 1.2rem 1.4rem; font-size: 0.92rem; color: var(--suave);
+      }
+      footer {
+        text-align: center; color: #9aa5b1; font-size: 0.75rem;
+        padding: 2rem 1rem;
       }
     </style>
   </head>
   <body>
-    <main>
-      <h1>Página de ejemplo de la entidad</h1>
-      <p>
-        Esta página simula el portal institucional donde se embebe el widget de
-        chat. El botón flotante de la esquina inferior derecha es el Web
-        Component <code>&lt;andje-chat-widget&gt;</code>.
+    <div class="topbar">
+      <span class="marca">ANDJE</span>
+      <div>
+        <div class="nombre">Entidad publica - Portal de orientacion</div>
+        <div class="lema">Atencion al ciudadano</div>
+      </div>
+    </div>
+    <div class="aviso-demo">
+      Pagina demostrativa. No ingreses datos personales sensibles reales.
+    </div>
+
+    <section class="hero">
+      <div class="contenedor">
+        <h1>Estamos aqui para orientarte</h1>
+        <p>
+          Resuelve tus dudas sobre tramites y servicios institucionales a traves de
+          nuestro canal de chat. Un funcionario te acompanara en tiempo real.
+        </p>
+      </div>
+    </section>
+
+    <section class="seccion contenedor">
+      <h2>Sobre este canal</h2>
+      <p class="intro">
+        El chat institucional es un canal de orientacion en linea. Puedes iniciar una
+        conversacion desde el boton flotante en la esquina inferior derecha, elegir el
+        tema de tu consulta y conversar con el equipo de atencion. La conversacion puede
+        registrarse para trazabilidad institucional.
       </p>
-    </main>
+
+      <div class="tarjetas">
+        <div class="tarjeta">
+          <div class="icono">&#128172;</div>
+          <h3>Orientacion general</h3>
+          <p>Recibe informacion sobre servicios y puntos de atencion.</p>
+        </div>
+        <div class="tarjeta">
+          <div class="icono">&#128203;</div>
+          <h3>Tramites</h3>
+          <p>Consulta los pasos y requisitos de un tramite institucional.</p>
+        </div>
+        <div class="tarjeta">
+          <div class="icono">&#128231;</div>
+          <h3>PQRS</h3>
+          <p>Orientacion sobre peticiones, quejas, reclamos y sugerencias.</p>
+        </div>
+        <div class="tarjeta">
+          <div class="icono">&#128269;</div>
+          <h3>Seguimiento</h3>
+          <p>Preguntas generales sobre el estado de tus solicitudes.</p>
+        </div>
+      </div>
+
+      <div class="cta">
+        Abre el chat con el boton azul de la esquina inferior derecha. Es una
+        demostracion tecnica: no uses datos reales sensibles.
+      </div>
+    </section>
+
+    <footer>
+      Prototipo demostrativo de chat institucional. No apto para produccion.
+    </footer>
 
     <andje-chat-widget titulo="Chat institucional ANDJE"></andje-chat-widget>
 

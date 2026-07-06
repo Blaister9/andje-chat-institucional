@@ -97,6 +97,8 @@ function toConsoleConversation(
 ): ConsoleConversationDto {
   return {
     ...conversation,
+    topic: conversation.topic ?? previous?.topic ?? null,
+    feedbackRating: previous?.feedbackRating ?? null,
     lastMessagePreview: previous?.lastMessagePreview ?? null,
     lastMessageAtUtc: previous?.lastMessageAtUtc ?? conversation.updatedAtUtc,
     tags: previous?.tags ?? [],
