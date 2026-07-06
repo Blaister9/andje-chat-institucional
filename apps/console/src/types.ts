@@ -20,3 +20,47 @@ export interface AgentSessionDto {
   agentDisplayName: string;
   expiresAtUtc: string;
 }
+
+export interface ConversationTagDto {
+  id: string;
+  name: string;
+  color: string;
+  isActive: boolean;
+}
+
+export interface ConsoleConversationDto extends ConversationDto {
+  lastMessagePreview: string | null;
+  lastMessageAtUtc: string | null;
+  tags: ConversationTagDto[];
+}
+
+export interface ConsoleSummaryDto {
+  conversationsOpen: number;
+  conversationsPending: number;
+  conversationsActive: number;
+  conversationsClosed: number;
+  messagesTotal: number;
+  cannedResponsesActive: number;
+  tagsActive: number;
+  generatedAtUtc: string;
+}
+
+export interface CannedResponseDto {
+  id: string;
+  title: string;
+  body: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface InternalNoteDto {
+  id: string;
+  conversationId: string;
+  body: string;
+  agentDisplayName: string;
+  createdAtUtc: string;
+}
+
+export type ConversationFilter = 'open' | 'pending' | 'active' | 'closed' | 'all';

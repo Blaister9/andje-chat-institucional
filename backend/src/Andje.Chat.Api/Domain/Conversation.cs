@@ -14,6 +14,8 @@ public class Conversation
     public DateTimeOffset UpdatedAtUtc { get; set; }
     public DateTimeOffset? ClosedAtUtc { get; set; }
     public List<ChatMessage> Messages { get; set; } = [];
+    public List<InternalNote> InternalNotes { get; set; } = [];
+    public List<ConversationTagAssignment> TagAssignments { get; set; } = [];
 
     public ConversationDto ToDto() =>
         new(Id, Status.ToString(), VisitorDisplayName, CreatedAtUtc, UpdatedAtUtc, ClosedAtUtc);
