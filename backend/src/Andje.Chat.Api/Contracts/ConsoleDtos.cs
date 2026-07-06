@@ -8,6 +8,10 @@ public sealed record ConsoleSummaryDto(
     int MessagesTotal,
     int CannedResponsesActive,
     int TagsActive,
+    int FeedbackCount,
+    double? AverageRating,
+    int PositiveFeedbackCount,
+    double? PositiveFeedbackRate,
     DateTimeOffset GeneratedAtUtc);
 
 public sealed record ConsoleConversationDto(
@@ -21,7 +25,10 @@ public sealed record ConsoleConversationDto(
     DateTimeOffset? LastMessageAtUtc,
     IReadOnlyList<ConversationTagDto> Tags,
     string? Topic,
-    int? FeedbackRating);
+    int? FeedbackRating,
+    // feedbackComment solo se expone en endpoints internos con token de agente.
+    string? FeedbackComment,
+    DateTimeOffset? FeedbackCreatedAtUtc);
 
 public sealed record CannedResponseDto(
     Guid Id,

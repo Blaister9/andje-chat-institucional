@@ -81,6 +81,13 @@ Estos valores son solo demo/dev. No son autenticacion institucional.
 Detalles de la experiencia ciudadana:
 [Citizen widget product experience](citizen-widget-product-experience.md).
 
+Tras enviar la encuesta desde el widget, en la consola pulse "Actualizar" y
+muestre: el dashboard suma la encuesta y calcula el promedio de satisfaccion;
+la conversacion cerrada muestra estrellas; el detalle muestra el comentario en
+el bloque "Encuesta ciudadana"; el filtro de calificacion encuentra la
+conversacion por rating y "Sin encuesta" la excluye. Detalles:
+[Feedback dashboard console](feedback-dashboard-console.md).
+
 ## Consultar auditoria
 
 ```powershell

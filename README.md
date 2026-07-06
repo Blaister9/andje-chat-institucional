@@ -4,10 +4,10 @@ Prototipo MVP de chat institucional para una entidad publica colombiana. Busca
 proveer una alternativa controlada a servicios externos tipo tawk.to, con
 trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 
-> Estado: fase 12 - experiencia ciudadana del widget (consentimiento,
-> categorias, encuesta y transcripcion). Base tecnica preliminar, alineada con
-> buenas practicas y pendiente de revision juridica y de seguridad
-> institucional. No apto para produccion.
+> Estado: fase 13 - dashboard de feedback en consola (satisfaccion promedio,
+> conteo de encuestas, comentario y filtro por calificacion). Base tecnica
+> preliminar, alineada con buenas practicas y pendiente de revision juridica y
+> de seguridad institucional. No apto para produccion.
 
 ## Alcance actual
 
@@ -164,6 +164,7 @@ conversacion activa tras recargar. Esto es conveniencia local, no seguridad.
 - [Observability demo](docs/observability-demo.md)
 - [Agent console product experience](docs/agent-console-product-experience.md)
 - [Citizen widget product experience](docs/citizen-widget-product-experience.md)
+- [Feedback dashboard console](docs/feedback-dashboard-console.md)
 - [Checklist de presentacion demo](docs/demo-presentation-checklist.md)
 - [Linea base de seguridad y privacidad](docs/privacy-security-baseline.md)
 - [ADR 0001 - Arquitectura inicial](docs/adr/0001-architecture.md)
