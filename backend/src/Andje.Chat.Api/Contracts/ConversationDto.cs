@@ -7,4 +7,5 @@ public sealed record ConversationDto(
     string? VisitorDisplayName,
     DateTimeOffset StartedAt,
     DateTimeOffset UpdatedAtUtc,
-    DateTimeOffset? ClosedAtUtc);
+    DateTimeOffset? ClosedAtUtc,
+    string? Topic = null);

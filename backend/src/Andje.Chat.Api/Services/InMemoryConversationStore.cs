@@ -21,7 +21,11 @@ public sealed class InMemoryConversationStore : IConversationStore
     private readonly object _sync = new();
 
     public Task<ConversationDto> StartConversationAsync(
-        string? visitorDisplayName, CancellationToken cancellationToken = default)
+        string? visitorDisplayName,
+        string? topic = null,
+        string? consentVersion = null,
+        DateTimeOffset? consentAcceptedAtUtc = null,
+        CancellationToken cancellationToken = default)
     {
         var dto = new ConversationDto(
             Guid.NewGuid(),
@@ -29,7 +33,8 @@ public sealed class InMemoryConversationStore : IConversationStore
             visitorDisplayName,
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow,
-            null);
+            null,
+            topic);
         _conversations[dto.Id] = new Entry(dto);
         return Task.FromResult(dto);
     }

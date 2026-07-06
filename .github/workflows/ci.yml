@@ -55,7 +55,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 20.19.0
           cache: npm
           cache-dependency-path: |
             apps/console/package-lock.json
@@ -82,20 +82,56 @@ jobs:
       - name: Validate Docker Compose config
         run: docker compose config -q
 
+      - name: Secret scan with Gitleaks
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 detect \
+            --source=/repo \
+            --no-git \
+            --redact \
+            --config=/repo/.gitleaks.toml
+
       - name: Check .NET vulnerable packages
-        run: dotnet list backend/Andje.Chat.sln package --vulnerable --include-transitive
+        run: |
+          dotnet list backend/Andje.Chat.sln package --vulnerable --include-transitive --format json > dotnet-vulnerable.json
+          cat dotnet-vulnerable.json
+          python - <<'PY'
+          import json
+          import sys
+
+          with open("dotnet-vulnerable.json", encoding="utf-8") as handle:
+              report = json.load(handle)
+
+          findings = []
+
+          def walk(node, path="root"):
+              if isinstance(node, dict):
+                  vulnerabilities = node.get("vulnerabilities")
+                  if vulnerabilities:
+                      findings.append((path, vulnerabilities))
+                  for key, value in node.items():
+                      walk(value, f"{path}.{key}")
+              elif isinstance(node, list):
+                  for index, value in enumerate(node):
+                      walk(value, f"{path}[{index}]")
+
+          walk(report)
+
+          if findings:
+              print("Vulnerable .NET packages found:")
+              for path, vulnerabilities in findings:
+                  print(f"- {path}: {vulnerabilities}")
+              sys.exit(1)
+
+          print("No vulnerable .NET packages found.")
+          PY
 
       - name: Audit console npm dependencies
-        # Temporal report-only gate: current Vite/esbuild advisory requires a
-        # major upgrade outside this microfase. Build/test gates remain blocking.
-        continue-on-error: true
         working-directory: apps/console
         run: npm audit --audit-level=high
 
       - name: Audit widget npm dependencies
-        # Temporal report-only gate: current Vite/esbuild advisory requires a
-        # major upgrade outside this microfase. Build/test gates remain blocking.
-        continue-on-error: true
         working-directory: apps/widget
         run: npm audit --audit-level=high
 

@@ -4,19 +4,53 @@ import {
   LogLevel,
 } from '@microsoft/signalr';
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { AgentSessionDto, ChatMessageDto, ConversationDto } from './types';
+import {
+  API_BASE,
+  assignTag,
+  createCannedResponse,
+  createInternalNote,
+  deactivateCannedResponse,
+  getCannedResponses,
+  getConsoleConversations,
+  getInternalNotes,
+  getSummary,
+  getTags,
+  removeTag,
+  SessionExpiredError,
+  updateCannedResponse,
+} from './api';
+import {
+  DashboardCards,
+  ConversationDetail,
+  ConversationQueue,
+  LoginView,
+  SettingsPanel,
+} from './components/ConsoleViews';
+import { ConnectionStatus } from './components/ConsoleViews';
+import {
+  AgentSessionDto,
+  CannedResponseDto,
+  ChatMessageDto,
+  ConsoleConversationDto,
+  ConsoleSummaryDto,
+  ConversationDto,
+  ConversationFilter,
+  ConversationTagDto,
+  InternalNoteDto,
+  RatingFilter,
+} from './types';
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 const TOKEN_KEY = 'andje-chat.agent.accessToken';
 const DISPLAY_NAME_KEY = 'andje-chat.agent.displayName';
 const EXPIRES_AT_KEY = 'andje-chat.agent.expiresAtUtc';
 
-type ConnectionStatus = 'conectando' | 'conectado' | 'desconectado';
 type AgentSession = {
   accessToken: string;
   agentDisplayName: string;
   expiresAtUtc: string;
 };
+
+type ConsoleSection = 'attention' | 'settings';
 
 function appendUnique(
   byConversation: Record<string, ChatMessageDto[]>,
@@ -27,16 +61,6 @@ function appendUnique(
     return byConversation;
   }
   return { ...byConversation, [message.conversationId]: [...current, message] };
-}
-
-function statusLabel(status: ConversationDto['status']): string {
-  if (status === 'Pending') {
-    return 'En espera';
-  }
-  if (status === 'Active') {
-    return 'Activa';
-  }
-  return 'Cerrada';
 }
 
 function readStoredSession(): AgentSession | null {
@@ -68,20 +92,62 @@ function clearStoredSession(): void {
   sessionStorage.removeItem(EXPIRES_AT_KEY);
 }
 
+function toConsoleConversation(
+  conversation: ConversationDto,
+  previous?: ConsoleConversationDto,
+): ConsoleConversationDto {
+  return {
+    ...conversation,
+    topic: conversation.topic ?? previous?.topic ?? null,
+    feedbackRating: previous?.feedbackRating ?? null,
+    feedbackComment: previous?.feedbackComment ?? null,
+    feedbackCreatedAtUtc: previous?.feedbackCreatedAtUtc ?? null,
+    lastMessagePreview: previous?.lastMessagePreview ?? null,
+    lastMessageAtUtc: previous?.lastMessageAtUtc ?? conversation.updatedAtUtc,
+    tags: previous?.tags ?? [],
+  };
+}
+
+function preview(content: string): string {
+  return content.length <= 140 ? content : `${content.slice(0, 140)}...`;
+}
+
+function isSessionError(error: unknown): boolean {
+  return error instanceof SessionExpiredError || String(error).includes('Agent session');
+}
+
 export function App() {
   const [agentSession, setAgentSession] = useState<AgentSession | null>(() => readStoredSession());
   const [status, setStatus] = useState<ConnectionStatus>(
     agentSession ? 'conectando' : 'desconectado',
   );
-  const [conversations, setConversations] = useState<ConversationDto[]>([]);
+  const [section, setSection] = useState<ConsoleSection>('attention');
+  const [summary, setSummary] = useState<ConsoleSummaryDto | null>(null);
+  const [conversations, setConversations] = useState<ConsoleConversationDto[]>([]);
   const [messagesByConversation, setMessagesByConversation] = useState<
     Record<string, ChatMessageDto[]>
+  >({});
+  const [notesByConversation, setNotesByConversation] = useState<
+    Record<string, InternalNoteDto[]>
   >({});
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const [noteDraft, setNoteDraft] = useState('');
   const [sendError, setSendError] = useState('');
-  const [showClosed, setShowClosed] = useState(false);
+  const [noteError, setNoteError] = useState('');
+  const [globalError, setGlobalError] = useState('');
+  const [loadingConsole, setLoadingConsole] = useState(false);
+  const [filter, setFilter] = useState<ConversationFilter>('open');
+  const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
+  const [search, setSearch] = useState('');
+  const [cannedResponses, setCannedResponses] = useState<CannedResponseDto[]>([]);
+  const [tags, setTags] = useState<ConversationTagDto[]>([]);
+  const [editingResponse, setEditingResponse] = useState<CannedResponseDto | null>(null);
+  const [responseTitle, setResponseTitle] = useState('');
+  const [responseBody, setResponseBody] = useState('');
+  const [responseSortOrder, setResponseSortOrder] = useState(100);
+  const [settingsError, setSettingsError] = useState('');
   const [loginName, setLoginName] = useState('');
   const [loginCode, setLoginCode] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -90,24 +156,12 @@ export function App() {
   const connectionRef = useRef<HubConnection | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!agentSession) {
       setStatus('desconectado');
       return;
     }
-
-    const expireSession = (message = 'La sesion de agente expiro o no es valida.') => {
-      clearStoredSession();
-      setAgentSession(null);
-      setLoginError(message);
-      setConversations([]);
-      setMessagesByConversation({});
-      setUnread({});
-      setSelectedId(null);
-      setStatus('desconectado');
-    };
 
     const connection = new HubConnectionBuilder()
       .withUrl(`${API_BASE}/hubs/chat`, {
@@ -119,15 +173,12 @@ export function App() {
     connectionRef.current = connection;
 
     connection.on('ConversationStarted', (conversation: ConversationDto) => {
-      setConversations((prev) =>
-        prev.some((c) => c.id === conversation.id) ? prev : [...prev, conversation],
-      );
+      setConversations((prev) => upsertConversation(prev, conversation));
+      void refreshConsoleData(agentSession.accessToken, false);
     });
 
     const updateConversation = (conversation: ConversationDto) => {
-      setConversations((prev) =>
-        prev.map((c) => (c.id === conversation.id ? conversation : c)),
-      );
+      setConversations((prev) => upsertConversation(prev, conversation));
     };
 
     connection.on('ConversationUpdated', updateConversation);
@@ -137,10 +188,24 @@ export function App() {
       if (selectedIdRef.current === conversation.id) {
         setSendError('La conversacion fue cerrada.');
       }
+      void refreshConsoleData(agentSession.accessToken, false);
     });
 
     connection.on('MessageReceived', (message: ChatMessageDto) => {
       setMessagesByConversation((prev) => appendUnique(prev, message));
+      setConversations((prev) =>
+        prev.map((conversation) =>
+          conversation.id === message.conversationId
+            ? {
+                ...conversation,
+                lastMessagePreview: preview(message.content),
+                lastMessageAtUtc: message.sentAt,
+                updatedAtUtc: message.sentAt,
+              }
+            : conversation,
+        ),
+      );
+
       if (
         message.senderType === 'Visitor' &&
         selectedIdRef.current !== message.conversationId
@@ -150,37 +215,44 @@ export function App() {
           [message.conversationId]: (prev[message.conversationId] ?? 0) + 1,
         }));
       }
+      void refreshSummary(agentSession.accessToken);
     });
 
     const joinConsole = () =>
       connection
         .invoke<ConversationDto[]>('JoinAgentConsole')
         .then((list) => {
-          setConversations(list);
+          setConversations((prev) =>
+            list.map((conversation) =>
+              toConsoleConversation(
+                conversation,
+                prev.find((existing) => existing.id === conversation.id),
+              ),
+            ),
+          );
           setStatus('conectado');
           setLoginError('');
+          void refreshConsoleData(agentSession.accessToken);
         })
-        .catch(() => expireSession());
+        .catch((error) => handleSessionFailure(error));
 
-    connection.onreconnecting(() => setStatus('desconectado'));
+    connection.onreconnecting(() => setStatus('reconectando'));
     connection.onreconnected(() => {
+      setStatus('conectando');
       void joinConsole();
     });
+    connection.onclose(() => setStatus('desconectado'));
 
     connection
       .start()
       .then(joinConsole)
-      .catch(() => expireSession());
+      .catch((error) => handleSessionFailure(error));
 
     return () => {
       connectionRef.current = null;
       void connection.stop();
     };
   }, [agentSession]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ block: 'end' });
-  }, [messagesByConversation, selectedId]);
 
   async function submitLogin(event: FormEvent) {
     event.preventDefault();
@@ -195,6 +267,11 @@ export function App() {
           accessCode: loginCode,
         }),
       });
+
+      if (response.status === 429) {
+        setLoginError('Demasiados intentos. Espere un momento e intente de nuevo.');
+        return;
+      }
 
       if (!response.ok) {
         setLoginError('Codigo de acceso invalido.');
@@ -220,40 +297,112 @@ export function App() {
   function logout() {
     clearStoredSession();
     setAgentSession(null);
+    setSummary(null);
     setConversations([]);
     setMessagesByConversation({});
+    setNotesByConversation({});
     setUnread({});
     setSelectedId(null);
     setDraft('');
+    setNoteDraft('');
     setSendError('');
+    setNoteError('');
+    setGlobalError('');
     setLoginError('');
     setStatus('desconectado');
     void connectionRef.current?.stop();
+  }
+
+  function handleSessionFailure(error: unknown) {
+    if (isSessionError(error)) {
+      logout();
+      setLoginError('La sesion de agente expiro o no es valida.');
+      return;
+    }
+    setStatus('desconectado');
+    setGlobalError('No fue posible conectar con el backend.');
+  }
+
+  async function refreshSummary(accessToken = agentSession?.accessToken) {
+    if (!accessToken) {
+      return;
+    }
+    try {
+      setSummary(await getSummary(accessToken));
+    } catch (error) {
+      if (isSessionError(error)) {
+        handleSessionFailure(error);
+      }
+    }
+  }
+
+  async function refreshConsoleData(
+    accessToken = agentSession?.accessToken,
+    showLoading = true,
+  ) {
+    if (!accessToken) {
+      return;
+    }
+    if (showLoading) {
+      setLoadingConsole(true);
+    }
+    try {
+      const [nextSummary, nextConversations, nextResponses, nextTags] = await Promise.all([
+        getSummary(accessToken),
+        getConsoleConversations(accessToken),
+        getCannedResponses(accessToken),
+        getTags(accessToken),
+      ]);
+      setSummary(nextSummary);
+      setConversations(nextConversations);
+      setCannedResponses(nextResponses);
+      setTags(nextTags);
+      setGlobalError('');
+      setSelectedId((current) =>
+        current && nextConversations.some((conversation) => conversation.id === current)
+          ? current
+          : current,
+      );
+    } catch (error) {
+      if (isSessionError(error)) {
+        handleSessionFailure(error);
+      } else {
+        setGlobalError('No fue posible cargar datos de consola.');
+      }
+    } finally {
+      setLoadingConsole(false);
+    }
   }
 
   async function selectConversation(id: string) {
     setSelectedId(id);
     setUnread((prev) => ({ ...prev, [id]: 0 }));
     setSendError('');
+    setNoteError('');
     const connection = connectionRef.current;
-    if (!connection) {
+    if (!connection || !agentSession) {
       return;
     }
     try {
-      const history = await connection.invoke<ChatMessageDto[]>(
-        'GetConversationHistory',
-        id,
-      );
+      const [history, notes] = await Promise.all([
+        connection.invoke<ChatMessageDto[]>('GetConversationHistory', id),
+        getInternalNotes(agentSession.accessToken, id),
+      ]);
       setMessagesByConversation((prev) => {
         const merged = [...history];
         for (const message of prev[id] ?? []) {
-          if (!merged.some((m) => m.id === message.id)) {
+          if (!merged.some((item) => item.id === message.id)) {
             merged.push(message);
           }
         }
         return { ...prev, [id]: merged };
       });
-    } catch {
+      setNotesByConversation((prev) => ({ ...prev, [id]: notes }));
+    } catch (error) {
+      if (isSessionError(error)) {
+        handleSessionFailure(error);
+        return;
+      }
       setSendError('No fue posible cargar el historial.');
     }
   }
@@ -262,7 +411,7 @@ export function App() {
     event.preventDefault();
     const content = draft.trim();
     const connection = connectionRef.current;
-    const selected = conversations.find((c) => c.id === selectedId) ?? null;
+    const selected = conversations.find((conversation) => conversation.id === selectedId) ?? null;
     if (!content || !connection || !selected || selected.status === 'Closed') {
       return;
     }
@@ -274,9 +423,8 @@ export function App() {
       setDraft('');
       setSendError('');
     } catch (error) {
-      if (String(error).includes('Agent session')) {
-        logout();
-        setLoginError('La sesion de agente expiro o no es valida.');
+      if (isSessionError(error)) {
+        handleSessionFailure(error);
         return;
       }
       if (String(error).includes('Conversation is closed')) {
@@ -296,7 +444,7 @@ export function App() {
 
   async function closeSelectedConversation() {
     const connection = connectionRef.current;
-    const selected = conversations.find((c) => c.id === selectedId) ?? null;
+    const selected = conversations.find((conversation) => conversation.id === selectedId) ?? null;
     if (!connection || !selected || selected.status === 'Closed') {
       return;
     }
@@ -304,191 +452,363 @@ export function App() {
       return;
     }
     try {
-      const closed = await connection.invoke<ConversationDto>(
-        'CloseConversation',
-        selected.id,
-      );
+      const closed = await connection.invoke<ConversationDto>('CloseConversation', selected.id);
       setConversations((prev) =>
         prev.map((conversation) =>
-          conversation.id === closed.id ? closed : conversation,
+          conversation.id === closed.id ? toConsoleConversation(closed, conversation) : conversation,
         ),
       );
       setDraft('');
       setSendError('La conversacion fue cerrada.');
+      await refreshConsoleData(agentSession?.accessToken, false);
     } catch (error) {
-      if (String(error).includes('Agent session')) {
-        logout();
-        setLoginError('La sesion de agente expiro o no es valida.');
+      if (isSessionError(error)) {
+        handleSessionFailure(error);
         return;
       }
       setSendError('No fue posible cerrar la conversacion.');
     }
   }
 
+  async function addNote(event: FormEvent) {
+    event.preventDefault();
+    if (!agentSession || !selectedId) {
+      return;
+    }
+    const body = noteDraft.trim();
+    if (!body) {
+      return;
+    }
+    try {
+      const note = await createInternalNote(agentSession.accessToken, selectedId, body);
+      setNotesByConversation((prev) => ({
+        ...prev,
+        [selectedId]: [...(prev[selectedId] ?? []), note],
+      }));
+      setNoteDraft('');
+      setNoteError('');
+    } catch (error) {
+      if (isSessionError(error)) {
+        handleSessionFailure(error);
+        return;
+      }
+      setNoteError('No fue posible guardar la nota interna.');
+    }
+  }
+
+  async function assignConversationTag(tagId: string) {
+    if (!agentSession || !selectedId) {
+      return;
+    }
+    try {
+      await assignTag(agentSession.accessToken, selectedId, tagId);
+      await refreshConsoleData(agentSession.accessToken, false);
+    } catch (error) {
+      if (isSessionError(error)) {
+        handleSessionFailure(error);
+        return;
+      }
+      setGlobalError('No fue posible asignar la etiqueta.');
+    }
+  }
+
+  async function removeConversationTag(tagId: string) {
+    if (!agentSession || !selectedId) {
+      return;
+    }
+    try {
+      await removeTag(agentSession.accessToken, selectedId, tagId);
+      await refreshConsoleData(agentSession.accessToken, false);
+    } catch (error) {
+      if (isSessionError(error)) {
+        handleSessionFailure(error);
+        return;
+      }
+      setGlobalError('No fue posible quitar la etiqueta.');
+    }
+  }
+
+  function insertQuickResponse(body: string) {
+    setDraft((current) => (current.trim() ? `${current.trim()}\n\n${body}` : body));
+  }
+
+  function editResponse(response: CannedResponseDto) {
+    setEditingResponse(response);
+    setResponseTitle(response.title);
+    setResponseBody(response.body);
+    setResponseSortOrder(response.sortOrder);
+    setSettingsError('');
+  }
+
+  function cancelEditResponse() {
+    setEditingResponse(null);
+    setResponseTitle('');
+    setResponseBody('');
+    setResponseSortOrder(100);
+    setSettingsError('');
+  }
+
+  async function saveResponse(event: FormEvent) {
+    event.preventDefault();
+    if (!agentSession) {
+      return;
+    }
+    const title = responseTitle.trim();
+    const body = responseBody.trim();
+    if (!title || !body) {
+      setSettingsError('Titulo y cuerpo son requeridos.');
+      return;
+    }
+    try {
+      if (editingResponse) {
+        await updateCannedResponse(
+          agentSession.accessToken,
+          editingResponse,
+          title,
+          body,
+          responseSortOrder,
+        );
+      } else {
+        await createCannedResponse(
+          agentSession.accessToken,
+          title,
+          body,
+          responseSortOrder,
+        );
+      }
+      cancelEditResponse();
+      setCannedResponses(await getCannedResponses(agentSession.accessToken));
+    } catch (error) {
+      if (isSessionError(error)) {
+        handleSessionFailure(error);
+        return;
+      }
+      setSettingsError('No fue posible guardar la respuesta rapida.');
+    }
+  }
+
+  async function deactivateResponse(responseId: string) {
+    if (!agentSession) {
+      return;
+    }
+    try {
+      await deactivateCannedResponse(agentSession.accessToken, responseId);
+      setCannedResponses(await getCannedResponses(agentSession.accessToken));
+    } catch (error) {
+      if (isSessionError(error)) {
+        handleSessionFailure(error);
+        return;
+      }
+      setSettingsError('No fue posible desactivar la respuesta rapida.');
+    }
+  }
+
   if (!agentSession) {
     return (
-      <main className="access-page">
-        <form className="access-card" onSubmit={(event) => void submitLogin(event)}>
-          <h1>Acceso consola de agentes</h1>
-          <label>
-            Nombre del agente
-            <input
-              type="text"
-              maxLength={80}
-              autoComplete="off"
-              value={loginName}
-              onChange={(event) => setLoginName(event.target.value)}
-              placeholder="Agente QA"
-            />
-          </label>
-          <label>
-            Codigo de acceso
-            <input
-              type="password"
-              autoComplete="off"
-              value={loginCode}
-              onChange={(event) => setLoginCode(event.target.value)}
-            />
-          </label>
-          <button type="submit" disabled={loginSubmitting}>
-            {loginSubmitting ? 'Ingresando...' : 'Ingresar'}
-          </button>
-          {loginError && <p className="error">{loginError}</p>}
-          <p className="access-note">
-            Acceso local de desarrollo. No es autenticacion institucional.
-          </p>
-        </form>
-      </main>
+      <LoginView
+        loginName={loginName}
+        loginCode={loginCode}
+        loginError={loginError}
+        loginSubmitting={loginSubmitting}
+        onNameChange={setLoginName}
+        onCodeChange={setLoginCode}
+        onSubmit={(event) => void submitLogin(event)}
+      />
     );
   }
 
-  const selected = conversations.find((c) => c.id === selectedId) ?? null;
-  const isSelectedClosed = selected?.status === 'Closed';
-  const selectedMessages = selectedId
-    ? (messagesByConversation[selectedId] ?? [])
-    : [];
-  const visibleConversations = showClosed
-    ? conversations
-    : conversations.filter((conversation) => conversation.status !== 'Closed');
+  const selected = conversations.find((conversation) => conversation.id === selectedId) ?? null;
+  const selectedMessages = selectedId ? (messagesByConversation[selectedId] ?? []) : [];
+  const selectedNotes = selectedId ? (notesByConversation[selectedId] ?? []) : [];
+  const filteredConversations = conversations
+    .filter((conversation) => matchesFilter(conversation, filter))
+    .filter((conversation) => matchesRatingFilter(conversation, ratingFilter))
+    .filter((conversation) =>
+      matchesSearch(conversation, search, messagesByConversation[conversation.id] ?? []),
+    )
+    .sort((left, right) =>
+      Date.parse(right.lastMessageAtUtc ?? right.updatedAtUtc) -
+      Date.parse(left.lastMessageAtUtc ?? left.updatedAtUtc),
+    );
 
   return (
-    <div className="layout">
-      <header className="header">
-        <h1>Consola de agentes</h1>
-        <span className="subtitle">Chat institucional - ANDJE</span>
-        <span className="agent-name">{agentSession.agentDisplayName}</span>
-        <span className={`estado-conexion ${status}`}>{status}</span>
-        <button type="button" className="logout" onClick={logout}>Salir</button>
-      </header>
+    <div className="console-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <span>ANDJE</span>
+          <strong>Chat institucional</strong>
+        </div>
+        <nav aria-label="Secciones de consola">
+          <button
+            type="button"
+            className={section === 'attention' ? 'active' : ''}
+            onClick={() => setSection('attention')}
+          >
+            Atencion
+          </button>
+          <button
+            type="button"
+            className={section === 'settings' ? 'active' : ''}
+            onClick={() => setSection('settings')}
+          >
+            Configuracion
+          </button>
+        </nav>
+        <div className="session-card">
+          <span>Funcionario</span>
+          <strong>{agentSession.agentDisplayName}</strong>
+          <small>Sesion local/dev</small>
+        </div>
+      </aside>
 
-      <main className="panels">
-        <section className="panel" aria-label="Cola de conversaciones">
-          <div className="panel-heading">
-            <h2>Cola de conversaciones</h2>
-            <label className="toggle-cerradas">
-              <input
-                type="checkbox"
-                checked={showClosed}
-                onChange={(event) => setShowClosed(event.target.checked)}
-              />
-              Ver cerradas
-            </label>
+      <main className="console-main">
+        <header className="topbar">
+          <div>
+            <span className="eyebrow">MVP demo</span>
+            <h1>Consola de agentes</h1>
           </div>
-          {visibleConversations.length === 0 ? (
-            <p className="placeholder">
-              Sin conversaciones. Inicie una desde el widget demo
-              (http://localhost:5174).
-            </p>
-          ) : (
-            <ul className="cola">
-              {visibleConversations.map((conversation) => (
-                <li key={conversation.id}>
-                  <button
-                    type="button"
-                    className={`item-cola ${conversation.id === selectedId ? 'seleccionada' : ''}`}
-                    onClick={() => void selectConversation(conversation.id)}
-                  >
-                    <span className="nombre">
-                      {conversation.visitorDisplayName ?? 'Ciudadano anonimo'}
-                    </span>
-                    <span className={`badge ${conversation.status.toLowerCase()}`}>
-                      {statusLabel(conversation.status)}
-                    </span>
-                    {(unread[conversation.id] ?? 0) > 0 && (
-                      <span className="badge no-leidos">{unread[conversation.id]}</span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+          <div className="topbar-actions">
+            <button type="button" className="secondary-button" onClick={() => void refreshConsoleData()}>
+              Actualizar
+            </button>
+            <button type="button" className="logout" onClick={logout}>
+              Salir
+            </button>
+          </div>
+        </header>
 
-        <section className="panel" aria-label="Conversacion activa">
-          <h2>
-            {selected
-              ? `Conversacion con ${selected.visitorDisplayName ?? 'ciudadano anonimo'}`
-              : 'Conversacion activa'}
-          </h2>
-          {selected ? (
-            <>
-              <div className="mensajes">
-                {selectedMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`mensaje ${message.senderType.toLowerCase()}`}
-                  >
-                    {message.content}
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-              <div className="acciones-conversacion">
-                <span className={`badge ${selected.status.toLowerCase()}`}>
-                  {statusLabel(selected.status)}
-                </span>
-                {!isSelectedClosed && (
-                  <button
-                    type="button"
-                    className="boton-secundario"
-                    onClick={() => void closeSelectedConversation()}
-                  >
-                    Cerrar conversacion
-                  </button>
-                )}
-              </div>
-              <form className="envio" onSubmit={(e) => void sendReply(e)}>
-                <input
-                  type="text"
-                  value={draft}
-                  maxLength={2000}
-                  autoComplete="off"
-                  placeholder={isSelectedClosed ? 'Conversacion cerrada' : 'Escriba la respuesta...'}
-                  aria-label="Respuesta"
-                  disabled={isSelectedClosed}
-                  onChange={(e) => setDraft(e.target.value)}
-                />
-                <button type="submit" disabled={isSelectedClosed}>Responder</button>
-              </form>
-              {isSelectedClosed && (
-                <p className="placeholder">
-                  Esta conversacion esta cerrada. No se pueden enviar nuevas respuestas.
-                </p>
-              )}
-              {sendError && <p className="error">{sendError}</p>}
-            </>
-          ) : (
-            <p className="placeholder">
-              Seleccione una conversacion de la cola para atenderla.
-            </p>
-          )}
-        </section>
+        {globalError && <p className="banner-error">{globalError}</p>}
+        {status === 'reconectando' && (
+          <p className="banner-warning">Reconectando realtime. Los datos se actualizaran al volver.</p>
+        )}
+        {status === 'desconectado' && (
+          <p className="banner-error">Realtime desconectado. Revise el backend o recargue la consola.</p>
+        )}
+
+        <DashboardCards summary={summary} status={status} />
+
+        {section === 'attention' ? (
+          <div className="attention-grid">
+            <ConversationQueue
+              conversations={filteredConversations}
+              selectedId={selectedId}
+              unread={unread}
+              filter={filter}
+              ratingFilter={ratingFilter}
+              search={search}
+              loading={loadingConsole}
+              onFilterChange={setFilter}
+              onRatingFilterChange={setRatingFilter}
+              onSearchChange={setSearch}
+              onSelect={(id) => void selectConversation(id)}
+            />
+            <ConversationDetail
+              selected={selected}
+              messages={selectedMessages}
+              notes={selectedNotes}
+              tags={tags}
+              quickResponses={cannedResponses}
+              draft={draft}
+              noteDraft={noteDraft}
+              sendError={sendError}
+              noteError={noteError}
+              onDraftChange={setDraft}
+              onNoteDraftChange={setNoteDraft}
+              onSend={(event) => void sendReply(event)}
+              onClose={() => void closeSelectedConversation()}
+              onAddNote={(event) => void addNote(event)}
+              onInsertQuickResponse={insertQuickResponse}
+              onAssignTag={(tagId) => void assignConversationTag(tagId)}
+              onRemoveTag={(tagId) => void removeConversationTag(tagId)}
+            />
+          </div>
+        ) : (
+          <SettingsPanel
+            responses={cannedResponses}
+            tags={tags}
+            editingResponse={editingResponse}
+            responseTitle={responseTitle}
+            responseBody={responseBody}
+            responseSortOrder={responseSortOrder}
+            settingsError={settingsError}
+            onTitleChange={setResponseTitle}
+            onBodyChange={setResponseBody}
+            onSortOrderChange={setResponseSortOrder}
+            onEdit={editResponse}
+            onCancelEdit={cancelEditResponse}
+            onSubmit={(event) => void saveResponse(event)}
+            onDeactivate={(responseId) => void deactivateResponse(responseId)}
+          />
+        )}
       </main>
-
-      <footer className="footer">
-        Prototipo interno - fase 04: acceso local de desarrollo para consola.
-        No apto para produccion.
-      </footer>
     </div>
   );
+}
+
+function upsertConversation(
+  conversations: ConsoleConversationDto[],
+  conversation: ConversationDto,
+): ConsoleConversationDto[] {
+  const current = conversations.find((item) => item.id === conversation.id);
+  if (current) {
+    return conversations.map((item) =>
+      item.id === conversation.id ? toConsoleConversation(conversation, item) : item,
+    );
+  }
+
+  return [toConsoleConversation(conversation), ...conversations];
+}
+
+function matchesFilter(
+  conversation: ConsoleConversationDto,
+  filter: ConversationFilter,
+): boolean {
+  if (filter === 'all') {
+    return true;
+  }
+  if (filter === 'open') {
+    return conversation.status !== 'Closed';
+  }
+  if (filter === 'pending') {
+    return conversation.status === 'Pending';
+  }
+  if (filter === 'active') {
+    return conversation.status === 'Active';
+  }
+  return conversation.status === 'Closed';
+}
+
+function matchesRatingFilter(
+  conversation: ConsoleConversationDto,
+  ratingFilter: RatingFilter,
+): boolean {
+  if (ratingFilter === 'all') {
+    return true;
+  }
+  if (ratingFilter === 'none') {
+    // "Sin encuesta": cerradas sin feedback registrado.
+    return conversation.status === 'Closed' && conversation.feedbackRating == null;
+  }
+  return conversation.feedbackRating === Number(ratingFilter);
+}
+
+function matchesSearch(
+  conversation: ConsoleConversationDto,
+  search: string,
+  loadedMessages: ChatMessageDto[],
+): boolean {
+  const term = search.trim().toLowerCase();
+  if (!term) {
+    return true;
+  }
+
+  const haystack = [
+    conversation.visitorDisplayName ?? '',
+    conversation.lastMessagePreview ?? '',
+    ...loadedMessages.map((message) => message.content),
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  return haystack.includes(term);
 }

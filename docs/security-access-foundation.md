@@ -81,6 +81,19 @@ mensajes.
 - La identidad auditada es identidad de desarrollo, no identidad institucional
   verificada.
 
+## Endurecimiento adicional (fase 07)
+
+`POST /api/agent-sessions` recibio controles transversales de seguridad:
+
+- Rate limiting nativo (por defecto 10 peticiones/minuto por IP) que devuelve
+  `429` ante fuerza bruta del codigo local.
+- Rechazo de codigos de acceso mayores a 256 caracteres antes de compararlos.
+- Headers HTTP de seguridad y CORS explicito por configuracion.
+- Validacion de configuracion insegura al arranque (por ejemplo acceso
+  habilitado sin codigo, `*` en CORS, `AutoMigrate` fuera de desarrollo).
+
+Detalle en [security-privacy-hardening.md](security-privacy-hardening.md).
+
 ## Futuro
 
 La siguiente evolucion natural es reemplazar este mecanismo local por Microsoft

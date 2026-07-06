@@ -16,6 +16,7 @@ public sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseEnvironment("Test");
         builder.UseSetting("Database:AutoMigrate", "false");
         builder.UseSetting("AgentAccess:DevelopmentAccessCode", "test-agent-code");
         builder.UseSetting("AgentAccess:SessionMinutes", "120");

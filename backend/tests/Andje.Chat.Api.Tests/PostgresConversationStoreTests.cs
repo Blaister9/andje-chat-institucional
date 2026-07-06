@@ -20,10 +20,14 @@ public sealed class PostgresFixture : IAsyncLifetime
             "true",
             StringComparison.OrdinalIgnoreCase);
 
+    private readonly string _adminConnectionString;
+    private readonly string _testDatabase = $"andje_chat_test_{Guid.NewGuid():N}";
+
     public bool Available { get; private set; }
     public string SkipReason { get; private set; }
 
     public DbContextOptions<ChatDbContext> Options { get; }
+    public string ConnectionString { get; }
 
     public PostgresFixture()
     {
@@ -31,8 +35,10 @@ public sealed class PostgresFixture : IAsyncLifetime
         var port = Environment.GetEnvironmentVariable("ANDJE_DB_PORT") ?? "5433";
         SkipReason =
             $"PostgreSQL no está disponible en localhost:{port}. Ejecute 'docker compose up -d db'.";
+        _adminConnectionString = $"Host=localhost;Port={port};Database=postgres;Username=andje;Password={password};Timeout=3";
+        ConnectionString = $"Host=localhost;Port={port};Database={_testDatabase};Username=andje;Password={password};Timeout=3";
         Options = new DbContextOptionsBuilder<ChatDbContext>()
-            .UseNpgsql($"Host=localhost;Port={port};Database=andje_chat_test;Username=andje;Password={password};Timeout=3")
+            .UseNpgsql(ConnectionString)
             .Options;
     }
 
@@ -42,8 +48,8 @@ public sealed class PostgresFixture : IAsyncLifetime
         {
             // Base de pruebas recreada desde cero: valida que la migración
             // sea aplicable de forma reproducible.
+            await RecreateTestDatabaseAsync();
             await using var db = new ChatDbContext(Options);
-            await db.Database.EnsureDeletedAsync();
             await db.Database.MigrateAsync();
             Available = true;
         }
@@ -60,7 +66,70 @@ public sealed class PostgresFixture : IAsyncLifetime
         }
     }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync()
+    {
+        if (!Available)
+        {
+            return;
+        }
+
+        try
+        {
+            await DropTestDatabaseAsync();
+        }
+        catch (Exception)
+        {
+            // Limpieza best-effort; no debe ocultar el resultado de las pruebas.
+        }
+    }
+
+    private async Task RecreateTestDatabaseAsync()
+    {
+        await using var connection = new NpgsqlConnection(_adminConnectionString);
+        await connection.OpenAsync();
+
+        await using (var terminate = connection.CreateCommand())
+        {
+            terminate.CommandText = $"""
+                SELECT pg_terminate_backend(pid)
+                FROM pg_stat_activity
+                WHERE datname = '{_testDatabase}' AND pid <> pg_backend_pid();
+                """;
+            await terminate.ExecuteNonQueryAsync();
+        }
+
+        await using (var drop = connection.CreateCommand())
+        {
+            drop.CommandText = $"""DROP DATABASE IF EXISTS "{_testDatabase}";""";
+            await drop.ExecuteNonQueryAsync();
+        }
+
+        await using (var create = connection.CreateCommand())
+        {
+            create.CommandText = $"""CREATE DATABASE "{_testDatabase}";""";
+            await create.ExecuteNonQueryAsync();
+        }
+    }
+
+    private async Task DropTestDatabaseAsync()
+    {
+        await using var connection = new NpgsqlConnection(_adminConnectionString);
+        await connection.OpenAsync();
+
+        await using (var terminate = connection.CreateCommand())
+        {
+            terminate.CommandText = $"""
+                SELECT pg_terminate_backend(pid)
+                FROM pg_stat_activity
+                WHERE datname = '{_testDatabase}' AND pid <> pg_backend_pid();
+                """;
+            await terminate.ExecuteNonQueryAsync();
+        }
+
+        await using var drop = connection.CreateCommand();
+        drop.CommandText = $"""DROP DATABASE IF EXISTS "{_testDatabase}";""";
+        await drop.ExecuteNonQueryAsync();
+    }
 }
 
 public class PostgresConversationStoreTests(PostgresFixture fixture) : IClassFixture<PostgresFixture>
