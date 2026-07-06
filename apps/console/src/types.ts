@@ -5,6 +5,7 @@ export interface ConversationDto {
   startedAt: string;
   updatedAtUtc: string;
   closedAtUtc: string | null;
+  topic?: string | null;
 }
 
 export interface ChatMessageDto {
@@ -32,6 +33,8 @@ export interface ConsoleConversationDto extends ConversationDto {
   lastMessagePreview: string | null;
   lastMessageAtUtc: string | null;
   tags: ConversationTagDto[];
+  topic?: string | null;
+  feedbackRating?: number | null;
 }
 
 export interface ConsoleSummaryDto {

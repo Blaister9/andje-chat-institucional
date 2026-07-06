@@ -4,9 +4,10 @@ Prototipo MVP de chat institucional para una entidad publica colombiana. Busca
 proveer una alternativa controlada a servicios externos tipo tawk.to, con
 trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 
-> Estado: fase 11 - consola de agentes con experiencia de producto demo. Base
-> tecnica preliminar, alineada con buenas practicas y pendiente de revision
-> juridica y de seguridad institucional. No apto para produccion.
+> Estado: fase 12 - experiencia ciudadana del widget (consentimiento,
+> categorias, encuesta y transcripcion). Base tecnica preliminar, alineada con
+> buenas practicas y pendiente de revision juridica y de seguridad
+> institucional. No apto para produccion.
 
 ## Alcance actual
 
@@ -16,6 +17,9 @@ trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 - Consola interna React + Vite + TypeScript.
 - Consola de agentes con dashboard, cola filtrable, busqueda, respuestas
   rapidas, notas internas y etiquetas visuales.
+- Experiencia ciudadana del widget: pagina demo institucional, consentimiento,
+  categoria de atencion, estados claros, encuesta de satisfaccion y
+  transcripcion local.
 - Conversaciones persistidas con estados `Pending`, `Active` y `Closed`.
 - Reanudacion de conversacion activa en el widget mediante `sessionStorage`.
 - Cierre desde consola, notificacion realtime y bloqueo de nuevos mensajes.
@@ -159,6 +163,7 @@ conversacion activa tras recargar. Esto es conveniencia local, no seguridad.
 - [HTTPS and forwarded headers](docs/https-forwarded-headers.md)
 - [Observability demo](docs/observability-demo.md)
 - [Agent console product experience](docs/agent-console-product-experience.md)
+- [Citizen widget product experience](docs/citizen-widget-product-experience.md)
 - [Checklist de presentacion demo](docs/demo-presentation-checklist.md)
 - [Linea base de seguridad y privacidad](docs/privacy-security-baseline.md)
 - [ADR 0001 - Arquitectura inicial](docs/adr/0001-architecture.md)

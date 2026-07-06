@@ -11,7 +11,11 @@ namespace Andje.Chat.Api.Services;
 public interface IConversationStore
 {
     Task<ConversationDto> StartConversationAsync(
-        string? visitorDisplayName, CancellationToken cancellationToken = default);
+        string? visitorDisplayName,
+        string? topic = null,
+        string? consentVersion = null,
+        DateTimeOffset? consentAcceptedAtUtc = null,
+        CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<ConversationDto>> GetConversationsAsync(
         CancellationToken cancellationToken = default);

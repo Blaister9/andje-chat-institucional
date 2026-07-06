@@ -26,7 +26,7 @@ public class RealtimeFlowTests(TestWebApplicationFactory factory) : IClassFixtur
 
         // El visitante inicia la conversación; la consola es notificada sin refrescar.
         var conversation = await visitor.InvokeAsync<ConversationDto>(
-            "StartConversation", new StartConversationRequest("Ciudadano de prueba"));
+            "StartConversation", new StartConversationRequest("Ciudadano de prueba", ConsentAccepted: true));
 
         Assert.Equal("Pending", conversation.Status);
         var notified = await conversationStarted.Task.WaitAsync(EventTimeout);
@@ -79,7 +79,7 @@ public class RealtimeFlowTests(TestWebApplicationFactory factory) : IClassFixtur
         await visitor.StartAsync();
 
         var conversation = await visitor.InvokeAsync<ConversationDto>(
-            "StartConversation", new StartConversationRequest(null));
+            "StartConversation", new StartConversationRequest(null, ConsentAccepted: true));
         await visitor.InvokeAsync("SendVisitorMessage",
             new SendVisitorMessageRequest(conversation.Id, "Primer mensaje"));
 
@@ -104,7 +104,7 @@ public class RealtimeFlowTests(TestWebApplicationFactory factory) : IClassFixtur
         await agent.InvokeAsync<List<ConversationDto>>("JoinAgentConsole");
 
         var conversation = await visitor.InvokeAsync<ConversationDto>(
-            "StartConversation", new StartConversationRequest("Ciudadano de prueba"));
+            "StartConversation", new StartConversationRequest("Ciudadano de prueba", ConsentAccepted: true));
         await visitor.InvokeAsync("SendVisitorMessage",
             new SendVisitorMessageRequest(conversation.Id, "Mensaje antes del cierre"));
 
@@ -159,7 +159,7 @@ public class RealtimeFlowTests(TestWebApplicationFactory factory) : IClassFixtur
         await visitor.StartAsync();
 
         var conversation = await visitor.InvokeAsync<ConversationDto>(
-            "StartConversation", new StartConversationRequest(null));
+            "StartConversation", new StartConversationRequest(null, ConsentAccepted: true));
 
         await Assert.ThrowsAsync<HubException>(() => visitor.InvokeAsync(
             "SendVisitorMessage", new SendVisitorMessageRequest(conversation.Id, "   ")));
@@ -206,7 +206,7 @@ public class RealtimeFlowTests(TestWebApplicationFactory factory) : IClassFixtur
         await visitor.StartAsync();
 
         var conversation = await visitor.InvokeAsync<ConversationDto>(
-            "StartConversation", new StartConversationRequest("Visitante sin token"));
+            "StartConversation", new StartConversationRequest("Visitante sin token", ConsentAccepted: true));
         await visitor.InvokeAsync("SendVisitorMessage",
             new SendVisitorMessageRequest(conversation.Id, "Mensaje visitante"));
 

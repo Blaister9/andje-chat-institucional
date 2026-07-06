@@ -435,6 +435,20 @@ textarea {
   white-space: nowrap;
 }
 
+.conversation-topic {
+  font-size: 0.7rem;
+  color: #10316b;
+  background: #eef2f7;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+
+.conversation-rating {
+  font-size: 0.72rem;
+  color: #f2b705;
+  letter-spacing: 1px;
+}
+
 .conversation-row.meta {
   color: #697586;
   font-size: 0.78rem;

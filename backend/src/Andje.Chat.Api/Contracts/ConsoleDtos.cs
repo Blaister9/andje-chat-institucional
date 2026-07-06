@@ -19,7 +19,9 @@ public sealed record ConsoleConversationDto(
     DateTimeOffset? ClosedAtUtc,
     string? LastMessagePreview,
     DateTimeOffset? LastMessageAtUtc,
-    IReadOnlyList<ConversationTagDto> Tags);
+    IReadOnlyList<ConversationTagDto> Tags,
+    string? Topic,
+    int? FeedbackRating);
 
 public sealed record CannedResponseDto(
     Guid Id,

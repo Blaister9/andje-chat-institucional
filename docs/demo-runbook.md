@@ -52,7 +52,7 @@ Estos valores son solo demo/dev. No son autenticacion institucional.
 
 ## Guion paso a paso
 
-1. Abrir `http://localhost:5174`.
+1. Abrir `http://localhost:5174` y mostrar la pagina institucional demo.
 2. Abrir `http://localhost:5173`.
 3. Iniciar sesion como `Funcionario Demo` con codigo `andje-agent-local`.
 4. Mostrar el dashboard operativo y los filtros de la cola.
@@ -60,17 +60,26 @@ Estos valores son solo demo/dev. No son autenticacion institucional.
 6. Crear respuesta rapida `Saludo demo` con cuerpo
    `Hola, con gusto te orientamos.`.
 7. Volver a `Atencion`.
-8. En el widget, iniciar chat como `Ciudadano Demo UX`.
-9. Enviar `Consulta demo consola`.
-10. Confirmar que aparece en cola y seleccionar la conversacion.
-11. Insertar la respuesta rapida y enviar respuesta.
-12. Agregar nota interna `Nota interna de seguimiento`.
-13. Asignar etiqueta `Seguimiento`.
-14. Confirmar que la nota solo aparece en consola.
-15. Cerrar la conversacion desde consola.
-16. Confirmar que el widget recibe la respuesta y el cierre.
-17. Mostrar auditoria tecnica con consulta SQL.
-18. Mostrar estado operativo con `.\scripts\demo\show-demo-status.ps1`.
+8. En el widget, abrir el chat, elegir el tema `Seguimiento` y aceptar el
+   aviso de tratamiento de datos (sin aceptar, el inicio queda bloqueado).
+9. Iniciar chat como `Ciudadano Demo Widget`.
+10. Enviar `Consulta demo widget`.
+11. Confirmar que aparece en cola con el tema y seleccionar la conversacion.
+12. Insertar la respuesta rapida y enviar respuesta.
+13. Agregar nota interna `Nota interna de seguimiento`.
+14. Asignar etiqueta `Seguimiento`.
+15. Confirmar que la nota solo aparece en consola.
+16. Cerrar la conversacion desde consola.
+17. Confirmar que el widget recibe la respuesta y el cierre institucional.
+18. En el widget, enviar la encuesta (calificacion 5, comentario
+    `Atencion clara`) y confirmar el agradecimiento.
+19. Copiar o descargar la transcripcion y verificar que no contiene notas
+    internas.
+20. Mostrar auditoria tecnica con consulta SQL.
+21. Mostrar estado operativo con `.\scripts\demo\show-demo-status.ps1`.
+
+Detalles de la experiencia ciudadana:
+[Citizen widget product experience](citizen-widget-product-experience.md).
 
 ## Consultar auditoria
 
