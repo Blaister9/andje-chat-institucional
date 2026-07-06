@@ -30,6 +30,7 @@ y no lo versione.
 ```powershell
 .\scripts\demo\start-demo.ps1
 .\scripts\demo\check-demo.ps1
+.\scripts\demo\show-demo-status.ps1
 ```
 
 URLs locales:
@@ -39,6 +40,7 @@ URLs locales:
 | Widget demo | `http://localhost:5174` |
 | Consola | `http://localhost:5173` |
 | API health | `http://localhost:8080/health` |
+| Diagnostico demo | `http://localhost:8080/api/diagnostics/status` |
 | PostgreSQL | `localhost:5433`, db `andje_chat`, usuario `andje` |
 
 Credenciales demo de consola:
@@ -61,6 +63,7 @@ Estos valores son solo demo/dev. No son autenticacion institucional.
 9. Cerrar la conversacion desde consola.
 10. Confirmar que el widget queda cerrado y ofrece nueva conversacion.
 11. Mostrar auditoria tecnica con consulta SQL.
+12. Mostrar estado operativo con `.\scripts\demo\show-demo-status.ps1`.
 
 ## Consultar auditoria
 
@@ -71,6 +74,16 @@ $sql | docker compose exec -T db psql -U andje -d andje_chat -v ON_ERROR_STOP=1
 
 La auditoria no guarda contenido de mensajes. Debe usarse para mostrar eventos
 tecnicos, no datos reales.
+
+## Revisar estado operativo
+
+```powershell
+.\scripts\demo\show-demo-status.ps1
+```
+
+El diagnostico muestra estado, base de datos y conteos. No muestra cuerpos de
+mensajes, tokens, codigos ni cadenas de conexion. Si ocurre un error, copie el
+header `X-Request-ID` de la respuesta y busquelo en logs de API.
 
 ## Limpiar datos demo
 
@@ -160,6 +173,8 @@ Riesgos LAN:
 - Puerto ocupado: cerrar proceso local o cambiar el puerto por variable de
   entorno antes de iniciar.
 - Health no responde: revisar `docker compose logs api`.
+- Diagnostico no responde: confirmar entorno `Development` o
+  `Diagnostics:Enabled=true`.
 - Consola o widget no abren: revisar `docker compose logs console widget`.
 - Login falla: verificar `ANDJE_AGENT_DEV_CODE` o usar `andje-agent-local`.
 - LAN no conecta: revisar firewall, IP local y `DEMO_ALLOWED_ORIGINS`.
@@ -186,3 +201,5 @@ El proxy debe enviar `X-Forwarded-Proto=https`; opcionalmente
 forwarded headers de proxies desconocidos.
 
 Detalles: [HTTPS and forwarded headers](https-forwarded-headers.md).
+
+Detalles de operacion demo: [Observability demo](observability-demo.md).
