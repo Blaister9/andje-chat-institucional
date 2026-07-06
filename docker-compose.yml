@@ -32,6 +32,9 @@ services:
       ANDJE_AGENT_ACCESS_ENABLED: "true"
       ANDJE_AGENT_DEV_CODE: ${ANDJE_AGENT_DEV_CODE:-andje-agent-local}
       ANDJE_AGENT_SESSION_MINUTES: ${ANDJE_AGENT_SESSION_MINUTES:-120}
+      # Origenes extra solo para demo LAN, separados por coma o punto y coma.
+      # Ejemplo: http://192.168.1.20:5173,http://192.168.1.20:5174
+      DEMO_ALLOWED_ORIGINS: ${DEMO_ALLOWED_ORIGINS:-}
     ports:
       - "8080:8080"
     depends_on:
@@ -42,6 +45,8 @@ services:
     image: node:22-alpine
     working_dir: /app
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_API_URL: ${DEMO_API_URL:-http://localhost:8080}
     volumes:
       - ./apps/console:/app
       - console-node-modules:/app/node_modules
@@ -54,6 +59,8 @@ services:
     image: node:22-alpine
     working_dir: /app
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_API_URL: ${DEMO_API_URL:-http://localhost:8080}
     volumes:
       - ./apps/widget:/app
       - widget-node-modules:/app/node_modules

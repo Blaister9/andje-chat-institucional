@@ -12,7 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 const string corsPolicy = "frontends-locales";
 const string agentSessionRateLimit = "agent-session";
 
-var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+var corsOrigins = GetCorsOrigins(builder.Configuration);
 
 builder.Services.AddCors(options =>
 {
@@ -166,6 +166,24 @@ static void ApplyAgentAccessEnvironmentAliases(IConfiguration configuration)
     {
         configuration["AgentAccess:SessionMinutes"] = sessionMinutes;
     }
+}
+
+static string[] GetCorsOrigins(IConfiguration configuration)
+{
+    var configured = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+    var demoExtraOrigins = Environment.GetEnvironmentVariable("DEMO_ALLOWED_ORIGINS");
+    if (string.IsNullOrWhiteSpace(demoExtraOrigins))
+    {
+        return configured;
+    }
+
+    var extra = demoExtraOrigins
+        .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    return configured
+        .Concat(extra)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
 }
 
 app.Run();

@@ -62,6 +62,27 @@ Detener:
 docker compose down
 ```
 
+## Demo local/LAN
+
+La demo reproducible se levanta con scripts PowerShell:
+
+```powershell
+.\scripts\demo\start-demo.ps1
+.\scripts\demo\check-demo.ps1
+```
+
+Documentacion:
+
+- [Runbook de demo](docs/demo-runbook.md)
+- [Checklist de presentacion](docs/demo-presentation-checklist.md)
+- Scripts: `scripts/demo/start-demo.ps1`, `scripts/demo/check-demo.ps1`,
+  `scripts/demo/reset-demo-data.ps1`, `scripts/demo/stop-demo.ps1`
+
+Para LAN, use `.env.demo` local no versionado basado en `.env.demo.example` y
+defina `DEMO_API_URL` + `DEMO_ALLOWED_ORIGINS` con la IP del host. No use
+wildcards de CORS, no use datos reales y no deje la demo corriendo despues de
+la presentacion. Este perfil no es produccion.
+
 ## Desarrollo local
 
 ```powershell
@@ -123,6 +144,8 @@ conversacion activa tras recargar. Esto es conveniencia local, no seguridad.
 - [Endurecimiento de seguridad y privacidad](docs/security-privacy-hardening.md)
 - [CI y quality gates](docs/ci-quality-gates.md)
 - [Dependency and secret hardening](docs/dependency-secret-hardening.md)
+- [Demo local/LAN](docs/demo-runbook.md)
+- [Checklist de presentacion demo](docs/demo-presentation-checklist.md)
 - [Linea base de seguridad y privacidad](docs/privacy-security-baseline.md)
 - [ADR 0001 - Arquitectura inicial](docs/adr/0001-architecture.md)
 
