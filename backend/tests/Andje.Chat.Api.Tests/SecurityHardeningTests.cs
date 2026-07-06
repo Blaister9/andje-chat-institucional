@@ -92,6 +92,23 @@ public class SecurityHardeningTests(TestWebApplicationFactory factory)
         Assert.Contains(HttpStatusCode.TooManyRequests, statuses);
     }
 
+    [Fact]
+    public async Task Forwarded_headers_respeta_proto_https_desde_proxy_conocido()
+    {
+        await using var forwardedFactory = new ForwardedHeadersTestWebApplicationFactory();
+        var client = forwardedFactory.CreateClient();
+        var request = new HttpRequestMessage(HttpMethod.Get, "/__test/request-scheme");
+        request.Headers.Add("X-Forwarded-Proto", "https");
+        request.Headers.Add("X-Forwarded-Host", "chat-demo.local");
+
+        var response = await client.SendAsync(request);
+
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"scheme\":\"https\"", payload);
+        Assert.Contains("\"host\":\"chat-demo.local\"", payload);
+    }
+
     private static string? Value(HttpResponseMessage response, string header)
     {
         if (response.Headers.TryGetValues(header, out var values))
@@ -111,10 +128,27 @@ public class SecurityHardeningTests(TestWebApplicationFactory factory)
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
+            builder.UseEnvironment("Test");
             builder.UseSetting("Database:AutoMigrate", "false");
             builder.UseSetting("AgentAccess:DevelopmentAccessCode", "test-agent-code");
             builder.UseSetting("RateLimiting:AgentSessionPermitLimit", "2");
             builder.UseSetting("RateLimiting:AgentSessionWindowSeconds", "60");
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IConversationStore>();
+                services.AddSingleton<IConversationStore, InMemoryConversationStore>();
+            });
+        }
+    }
+
+    private sealed class ForwardedHeadersTestWebApplicationFactory : WebApplicationFactory<Program>
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Test");
+            builder.UseSetting("Database:AutoMigrate", "false");
+            builder.UseSetting("AgentAccess:DevelopmentAccessCode", "test-agent-code");
+            builder.UseSetting("ForwardedHeaders:Enabled", "true");
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<IConversationStore>();

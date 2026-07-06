@@ -4,7 +4,7 @@ Prototipo MVP de chat institucional para una entidad publica colombiana. Busca
 proveer una alternativa controlada a servicios externos tipo tawk.to, con
 trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 
-> Estado: fase 07 - endurecimiento de seguridad y privacidad tecnica. Base
+> Estado: fase 09 - demo preparada para proxy/HTTPS externo. Base
 > tecnica preliminar, alineada con buenas practicas y pendiente de revision
 > juridica y de seguridad institucional. No apto para produccion.
 
@@ -20,7 +20,8 @@ trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 - Acceso local de desarrollo para consola de agentes con token opaco temporal.
 - Auditoria minima: inicio, mensajes, activacion y cierre.
 - Controles de seguridad tecnica: headers HTTP, CORS explicito, rate limiting
-  del acceso de agente, limites de payload y validacion de configuracion insegura.
+  del acceso de agente, limites de payload, forwarded headers configurables y
+  validacion de configuracion insegura.
 - CI con pruebas PostgreSQL obligatorias, auditorias de dependencias y Gitleaks.
 
 ## Fuera de alcance
@@ -81,7 +82,8 @@ Documentacion:
 Para LAN, use `.env.demo` local no versionado basado en `.env.demo.example` y
 defina `DEMO_API_URL` + `DEMO_ALLOWED_ORIGINS` con la IP del host. No use
 wildcards de CORS, no use datos reales y no deje la demo corriendo despues de
-la presentacion. Este perfil no es produccion.
+la presentacion. Para proxy HTTPS, configure forwarded headers con proxies o
+redes conocidas. Este perfil no es produccion.
 
 ## Desarrollo local
 
@@ -145,6 +147,7 @@ conversacion activa tras recargar. Esto es conveniencia local, no seguridad.
 - [CI y quality gates](docs/ci-quality-gates.md)
 - [Dependency and secret hardening](docs/dependency-secret-hardening.md)
 - [Demo local/LAN](docs/demo-runbook.md)
+- [HTTPS and forwarded headers](docs/https-forwarded-headers.md)
 - [Checklist de presentacion demo](docs/demo-presentation-checklist.md)
 - [Linea base de seguridad y privacidad](docs/privacy-security-baseline.md)
 - [ADR 0001 - Arquitectura inicial](docs/adr/0001-architecture.md)

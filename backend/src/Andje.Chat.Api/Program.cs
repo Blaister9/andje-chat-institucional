@@ -13,6 +13,8 @@ const string corsPolicy = "frontends-locales";
 const string agentSessionRateLimit = "agent-session";
 
 var corsOrigins = GetCorsOrigins(builder.Configuration);
+var forwardedHeadersOptions = ForwardedHeadersConfiguration.GetForwardedHeadersOptions(builder.Configuration);
+ApplyHttpsEnvironmentAliases(builder.Configuration);
 
 builder.Services.AddCors(options =>
 {
@@ -80,12 +82,17 @@ var app = builder.Build();
 // desarrollo y pruebas solo advierte para no romper el flujo local ni el CI.
 var isDevelopmentOrTest = app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Test");
 var autoMigrate = app.Configuration.GetValue("Database:AutoMigrate", true);
+var httpsOptions = app.Configuration.GetSection("Https").Get<AndjeHttpsOptions>() ?? new AndjeHttpsOptions();
 var startupIssues = SecurityStartupValidation.Collect(
     isDevelopmentOrTest,
     app.Configuration.GetSection("AgentAccess").Get<AgentAccessOptions>() ?? new AgentAccessOptions(),
     corsOrigins,
     autoMigrate,
-    !string.IsNullOrWhiteSpace(app.Configuration.GetConnectionString("ChatDb")));
+    !string.IsNullOrWhiteSpace(app.Configuration.GetConnectionString("ChatDb")),
+    forwardedHeadersOptions.Enabled,
+    ForwardedHeadersConfiguration.HasKnownProxyOrNetwork(forwardedHeadersOptions),
+    httpsOptions.RequireHttps,
+    httpsOptions.UseHsts);
 
 if (startupIssues.Count > 0)
 {
@@ -118,11 +125,21 @@ if (autoMigrate)
     await scope.ServiceProvider.GetRequiredService<ChatDbContext>().Database.MigrateAsync();
 }
 
+if (forwardedHeadersOptions.Enabled)
+{
+    app.UseForwardedHeaders(ForwardedHeadersConfiguration.ToMiddlewareOptions(forwardedHeadersOptions));
+}
+
 app.UseSecurityHeaders();
 
-// HSTS solo tiene efecto sobre respuestas HTTPS; en el desarrollo local (HTTP)
-// no aplica. Se deja preparado para entornos con TLS real.
-if (!app.Environment.IsDevelopment())
+if (httpsOptions.RequireHttps)
+{
+    app.UseHttpsRedirection();
+}
+
+// HSTS solo se activa explicitamente y fuera de desarrollo/pruebas. En demos
+// locales HTTP queda apagado para no romper localhost/LAN.
+if (httpsOptions.UseHsts && !isDevelopmentOrTest)
 {
     app.UseHsts();
 }
@@ -131,6 +148,17 @@ app.UseCors(corsPolicy);
 app.UseRateLimiter();
 
 app.MapHealthChecks("/health");
+if (app.Environment.IsEnvironment("Test"))
+{
+    app.MapGet("/__test/request-scheme", (HttpContext context) =>
+        Results.Json(new
+        {
+            scheme = context.Request.Scheme,
+            host = context.Request.Host.Value,
+            remoteIp = context.Connection.RemoteIpAddress?.ToString(),
+        }));
+}
+
 app.MapPost("/api/agent-sessions", (
     CreateAgentSessionRequest request,
     IAgentSessionService sessions) =>
@@ -184,6 +212,21 @@ static string[] GetCorsOrigins(IConfiguration configuration)
         .Concat(extra)
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray();
+}
+
+static void ApplyHttpsEnvironmentAliases(IConfiguration configuration)
+{
+    var requireHttps = Environment.GetEnvironmentVariable("ANDJE_HTTPS_REQUIRE");
+    if (!string.IsNullOrWhiteSpace(requireHttps))
+    {
+        configuration["Https:RequireHttps"] = requireHttps;
+    }
+
+    var useHsts = Environment.GetEnvironmentVariable("ANDJE_HTTPS_HSTS");
+    if (!string.IsNullOrWhiteSpace(useHsts))
+    {
+        configuration["Https:UseHsts"] = useHsts;
+    }
 }
 
 app.Run();
