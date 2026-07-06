@@ -35,6 +35,8 @@ export interface ConsoleConversationDto extends ConversationDto {
   tags: ConversationTagDto[];
   topic?: string | null;
   feedbackRating?: number | null;
+  feedbackComment?: string | null;
+  feedbackCreatedAtUtc?: string | null;
 }
 
 export interface ConsoleSummaryDto {
@@ -45,6 +47,10 @@ export interface ConsoleSummaryDto {
   messagesTotal: number;
   cannedResponsesActive: number;
   tagsActive: number;
+  feedbackCount: number;
+  averageRating: number | null;
+  positiveFeedbackCount: number;
+  positiveFeedbackRate: number | null;
   generatedAtUtc: string;
 }
 
@@ -67,3 +73,5 @@ export interface InternalNoteDto {
 }
 
 export type ConversationFilter = 'open' | 'pending' | 'active' | 'closed' | 'all';
+
+export type RatingFilter = 'all' | '5' | '4' | '3' | '2' | '1' | 'none';

@@ -7,7 +7,12 @@ import {
   ConversationFilter,
   ConversationTagDto,
   InternalNoteDto,
+  RatingFilter,
 } from '../types';
+
+function ratingStars(rating: number): string {
+  return '★'.repeat(rating) + '☆'.repeat(Math.max(0, 5 - rating));
+}
 
 export type ConnectionStatus = 'conectando' | 'conectado' | 'reconectando' | 'desconectado';
 
@@ -85,6 +90,10 @@ export function DashboardCards({ summary, status }: DashboardCardsProps) {
     ['Mensajes', summary?.messagesTotal ?? 0],
   ] as const;
 
+  const average = summary?.averageRating ?? null;
+  const feedbackCount = summary?.feedbackCount ?? 0;
+  const positiveRate = summary?.positiveFeedbackRate ?? null;
+
   return (
     <section className="dashboard" aria-label="Resumen operativo">
       {cards.map(([label, value]) => (
@@ -93,6 +102,22 @@ export function DashboardCards({ summary, status }: DashboardCardsProps) {
           <strong>{value}</strong>
         </article>
       ))}
+      <article className="metric-card satisfaction" aria-label="Satisfaccion promedio">
+        <span>Satisfaccion</span>
+        {average != null ? (
+          <>
+            <strong>{average.toFixed(1)} / 5</strong>
+            <small className="stars" aria-hidden="true">{ratingStars(Math.round(average))}</small>
+            {positiveRate != null && <small className="muted">{positiveRate}% positivas</small>}
+          </>
+        ) : (
+          <strong className="muted">Sin datos</strong>
+        )}
+      </article>
+      <article className="metric-card" aria-label="Encuestas recibidas">
+        <span>Encuestas</span>
+        <strong>{feedbackCount}</strong>
+      </article>
       <article className="metric-card realtime">
         <span>Realtime</span>
         <strong className={`status-dot ${status}`}>{status}</strong>
@@ -106,21 +131,35 @@ interface ConversationQueueProps {
   selectedId: string | null;
   unread: Record<string, number>;
   filter: ConversationFilter;
+  ratingFilter: RatingFilter;
   search: string;
   loading: boolean;
   onFilterChange: (filter: ConversationFilter) => void;
+  onRatingFilterChange: (filter: RatingFilter) => void;
   onSearchChange: (value: string) => void;
   onSelect: (id: string) => void;
 }
+
+const RATING_FILTER_OPTIONS: Array<[RatingFilter, string]> = [
+  ['all', 'Todas las calificaciones'],
+  ['5', '5 estrellas'],
+  ['4', '4 estrellas'],
+  ['3', '3 estrellas'],
+  ['2', '2 estrellas'],
+  ['1', '1 estrella'],
+  ['none', 'Sin encuesta'],
+];
 
 export function ConversationQueue({
   conversations,
   selectedId,
   unread,
   filter,
+  ratingFilter,
   search,
   loading,
   onFilterChange,
+  onRatingFilterChange,
   onSearchChange,
   onSelect,
 }: ConversationQueueProps) {
@@ -154,6 +193,20 @@ export function ConversationQueue({
           </button>
         ))}
       </div>
+
+      <label className="rating-filter">
+        <span className="small-muted">Calificacion</span>
+        <select
+          value={ratingFilter}
+          onChange={(event) => onRatingFilterChange(event.target.value as RatingFilter)}
+        >
+          {RATING_FILTER_OPTIONS.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <input
         className="search"
@@ -370,6 +423,12 @@ export function ConversationDetail({
 
         <aside className="notes-card">
           <div className="section-heading">
+            <h3>Encuesta ciudadana</h3>
+            <span className="small-muted">Solo visible en consola</span>
+          </div>
+          <FeedbackBlock selected={selected} isClosed={isClosed} />
+
+          <div className="section-heading">
             <h3>Notas internas</h3>
             <span className="small-muted">No visibles al ciudadano</span>
           </div>
@@ -523,6 +582,43 @@ export function SettingsPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function FeedbackBlock({
+  selected,
+  isClosed,
+}: {
+  selected: ConsoleConversationDto;
+  isClosed: boolean;
+}) {
+  if (selected.feedbackRating == null) {
+    return (
+      <div className="feedback-block empty">
+        <span className="small-muted">
+          {isClosed
+            ? 'Esta conversacion aun no tiene encuesta.'
+            : 'La encuesta se habilita cuando la conversacion se cierra.'}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="feedback-block">
+      <div className="feedback-rating" title={`${selected.feedbackRating}/5`}>
+        <span className="stars" aria-hidden="true">{ratingStars(selected.feedbackRating)}</span>
+        <span className="small-muted">{selected.feedbackRating}/5</span>
+      </div>
+      {selected.feedbackComment ? (
+        <p className="feedback-comment">{selected.feedbackComment}</p>
+      ) : (
+        <span className="small-muted">Sin comentario.</span>
+      )}
+      {selected.feedbackCreatedAtUtc && (
+        <time>{formatDate(selected.feedbackCreatedAtUtc)}</time>
+      )}
+    </div>
   );
 }
 

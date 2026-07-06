@@ -37,6 +37,7 @@ import {
   ConversationFilter,
   ConversationTagDto,
   InternalNoteDto,
+  RatingFilter,
 } from './types';
 
 const TOKEN_KEY = 'andje-chat.agent.accessToken';
@@ -99,6 +100,8 @@ function toConsoleConversation(
     ...conversation,
     topic: conversation.topic ?? previous?.topic ?? null,
     feedbackRating: previous?.feedbackRating ?? null,
+    feedbackComment: previous?.feedbackComment ?? null,
+    feedbackCreatedAtUtc: previous?.feedbackCreatedAtUtc ?? null,
     lastMessagePreview: previous?.lastMessagePreview ?? null,
     lastMessageAtUtc: previous?.lastMessageAtUtc ?? conversation.updatedAtUtc,
     tags: previous?.tags ?? [],
@@ -136,6 +139,7 @@ export function App() {
   const [globalError, setGlobalError] = useState('');
   const [loadingConsole, setLoadingConsole] = useState(false);
   const [filter, setFilter] = useState<ConversationFilter>('open');
+  const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
   const [search, setSearch] = useState('');
   const [cannedResponses, setCannedResponses] = useState<CannedResponseDto[]>([]);
   const [tags, setTags] = useState<ConversationTagDto[]>([]);
@@ -618,6 +622,7 @@ export function App() {
   const selectedNotes = selectedId ? (notesByConversation[selectedId] ?? []) : [];
   const filteredConversations = conversations
     .filter((conversation) => matchesFilter(conversation, filter))
+    .filter((conversation) => matchesRatingFilter(conversation, ratingFilter))
     .filter((conversation) =>
       matchesSearch(conversation, search, messagesByConversation[conversation.id] ?? []),
     )
@@ -689,9 +694,11 @@ export function App() {
               selectedId={selectedId}
               unread={unread}
               filter={filter}
+              ratingFilter={ratingFilter}
               search={search}
               loading={loadingConsole}
               onFilterChange={setFilter}
+              onRatingFilterChange={setRatingFilter}
               onSearchChange={setSearch}
               onSelect={(id) => void selectConversation(id)}
             />
@@ -769,6 +776,20 @@ function matchesFilter(
     return conversation.status === 'Active';
   }
   return conversation.status === 'Closed';
+}
+
+function matchesRatingFilter(
+  conversation: ConsoleConversationDto,
+  ratingFilter: RatingFilter,
+): boolean {
+  if (ratingFilter === 'all') {
+    return true;
+  }
+  if (ratingFilter === 'none') {
+    // "Sin encuesta": cerradas sin feedback registrado.
+    return conversation.status === 'Closed' && conversation.feedbackRating == null;
+  }
+  return conversation.feedbackRating === Number(ratingFilter);
 }
 
 function matchesSearch(

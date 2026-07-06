@@ -60,6 +60,18 @@ public static class ConsoleEndpoints
             t => t.IsActive,
             cancellationToken);
 
+        var feedbackCount = await db.ConversationFeedback.CountAsync(cancellationToken);
+        double? averageRating = null;
+        int positiveCount = 0;
+        double? positiveRate = null;
+        if (feedbackCount > 0)
+        {
+            averageRating = Math.Round(
+                await db.ConversationFeedback.AverageAsync(f => (double)f.Rating, cancellationToken), 1);
+            positiveCount = await db.ConversationFeedback.CountAsync(f => f.Rating >= 4, cancellationToken);
+            positiveRate = Math.Round((double)positiveCount / feedbackCount * 100, 1);
+        }
+
         return Results.Ok(new ConsoleSummaryDto(
             pending + active,
             pending,
@@ -68,6 +80,10 @@ public static class ConsoleEndpoints
             messages,
             activeResponses,
             activeTags,
+            feedbackCount,
+            averageRating,
+            positiveCount,
+            positiveRate,
             DateTimeOffset.UtcNow));
     }
 
@@ -90,11 +106,13 @@ public static class ConsoleEndpoints
             .OrderByDescending(c => c.UpdatedAtUtc)
             .ToListAsync(cancellationToken);
 
-        var ratings = await db.ConversationFeedback
+        // El comentario de feedback es dato ciudadano; solo se expone aqui
+        // (endpoint interno con token de agente), nunca en endpoints publicos.
+        var feedback = await db.ConversationFeedback
             .AsNoTracking()
-            .Select(f => new { f.ConversationId, f.Rating })
+            .Select(f => new { f.ConversationId, f.Rating, f.Comment, f.CreatedAtUtc })
             .ToListAsync(cancellationToken);
-        var ratingByConversation = ratings.ToDictionary(f => f.ConversationId, f => f.Rating);
+        var feedbackByConversation = feedback.ToDictionary(f => f.ConversationId);
 
         var result = conversations
             .Select(c =>
@@ -108,6 +126,8 @@ public static class ConsoleEndpoints
                     .OrderBy(t => t.Name)
                     .ToList();
 
+                feedbackByConversation.TryGetValue(c.Id, out var fb);
+
                 return new ConsoleConversationDto(
                     c.Id,
                     c.Status.ToString(),
@@ -119,7 +139,9 @@ public static class ConsoleEndpoints
                     lastMessage?.CreatedAtUtc,
                     tags,
                     c.Topic,
-                    ratingByConversation.TryGetValue(c.Id, out var rating) ? rating : null);
+                    fb?.Rating,
+                    fb?.Comment,
+                    fb?.CreatedAtUtc);
             })
             .ToList();
 
