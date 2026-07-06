@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using Andje.Chat.Api.Contracts;
 using Andje.Chat.Api.Data;
+using Andje.Chat.Api.Diagnostics;
 using Andje.Chat.Api.Hubs;
 using Andje.Chat.Api.Security;
 using Andje.Chat.Api.Services;
@@ -14,6 +15,7 @@ const string agentSessionRateLimit = "agent-session";
 
 var corsOrigins = GetCorsOrigins(builder.Configuration);
 var forwardedHeadersOptions = ForwardedHeadersConfiguration.GetForwardedHeadersOptions(builder.Configuration);
+ApplyDiagnosticsEnvironmentAliases(builder.Configuration);
 ApplyHttpsEnvironmentAliases(builder.Configuration);
 
 builder.Services.AddCors(options =>
@@ -67,6 +69,8 @@ builder.Services.AddRateLimiter(options =>
 ApplyAgentAccessEnvironmentAliases(builder.Configuration);
 builder.Services.Configure<AgentAccessOptions>(
     builder.Configuration.GetSection("AgentAccess"));
+builder.Services.Configure<DiagnosticsOptions>(
+    builder.Configuration.GetSection("Diagnostics"));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IAgentSessionService, AgentSessionService>();
 
@@ -75,6 +79,7 @@ builder.Services.AddDbContext<ChatDbContext>(options =>
         builder.Configuration.GetConnectionString("ChatDb"),
         npgsql => npgsql.EnableRetryOnFailure()));
 builder.Services.AddScoped<IConversationStore, PostgresConversationStore>();
+builder.Services.AddScoped<IDiagnosticsService, DiagnosticsService>();
 
 var app = builder.Build();
 
@@ -130,6 +135,7 @@ if (forwardedHeadersOptions.Enabled)
     app.UseForwardedHeaders(ForwardedHeadersConfiguration.ToMiddlewareOptions(forwardedHeadersOptions));
 }
 
+app.UseRequestCorrelation();
 app.UseSecurityHeaders();
 
 if (httpsOptions.RequireHttps)
@@ -148,6 +154,27 @@ app.UseCors(corsPolicy);
 app.UseRateLimiter();
 
 app.MapHealthChecks("/health");
+app.MapGet("/api/diagnostics/status", async (
+    IDiagnosticsService diagnostics,
+    CancellationToken cancellationToken) =>
+{
+    var options = app.Configuration.GetSection("Diagnostics").Get<DiagnosticsOptions>()
+        ?? new DiagnosticsOptions();
+    var allowed = app.Environment.IsDevelopment() ||
+                  app.Environment.IsEnvironment("Test") ||
+                  options.Enabled;
+    if (!allowed)
+    {
+        return Results.NotFound();
+    }
+
+    var status = await diagnostics.GetStatusAsync(
+        app.Environment.EnvironmentName,
+        options.IncludeCounts,
+        cancellationToken);
+    return Results.Ok(status);
+});
+
 if (app.Environment.IsEnvironment("Test"))
 {
     app.MapGet("/__test/request-scheme", (HttpContext context) =>
@@ -226,6 +253,21 @@ static void ApplyHttpsEnvironmentAliases(IConfiguration configuration)
     if (!string.IsNullOrWhiteSpace(useHsts))
     {
         configuration["Https:UseHsts"] = useHsts;
+    }
+}
+
+static void ApplyDiagnosticsEnvironmentAliases(IConfiguration configuration)
+{
+    var enabled = Environment.GetEnvironmentVariable("ANDJE_DIAGNOSTICS_ENABLED");
+    if (!string.IsNullOrWhiteSpace(enabled))
+    {
+        configuration["Diagnostics:Enabled"] = enabled;
+    }
+
+    var includeCounts = Environment.GetEnvironmentVariable("ANDJE_DIAGNOSTICS_INCLUDE_COUNTS");
+    if (!string.IsNullOrWhiteSpace(includeCounts))
+    {
+        configuration["Diagnostics:IncludeCounts"] = includeCounts;
     }
 }
 

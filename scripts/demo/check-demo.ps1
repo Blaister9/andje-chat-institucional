@@ -51,6 +51,10 @@ if ($health.StatusCode -ne 200 -or $health.Content.Trim() -ne "Healthy") {
     Fail "Healthcheck invalido en $apiBase/health."
 }
 
+if (-not $health.Headers.ContainsKey("X-Request-ID")) {
+    Fail "Header X-Request-ID ausente en /health."
+}
+
 $requiredHeaders = @(
     "X-Content-Type-Options",
     "X-Frame-Options",
@@ -62,6 +66,26 @@ foreach ($header in $requiredHeaders) {
     if (-not $health.Headers.ContainsKey($header)) {
         Fail "Header requerido ausente en /health: $header"
     }
+}
+
+try {
+    $diagnostics = Invoke-RestMethod -Uri "$apiBase/api/diagnostics/status" -TimeoutSec 10
+    if ($diagnostics.status -ne "Healthy") {
+        Fail "Diagnostico reporta estado '$($diagnostics.status)'."
+    }
+
+    Write-Host "Diagnostico:"
+    Write-Host "  status: $($diagnostics.status)"
+    Write-Host "  database: $($diagnostics.database)"
+    if ($diagnostics.counts) {
+        Write-Host "  conversationsTotal: $($diagnostics.counts.conversationsTotal)"
+        Write-Host "  conversationsOpen: $($diagnostics.counts.conversationsOpen)"
+        Write-Host "  conversationsClosed: $($diagnostics.counts.conversationsClosed)"
+        Write-Host "  messagesTotal: $($diagnostics.counts.messagesTotal)"
+        Write-Host "  auditEventsTotal: $($diagnostics.counts.auditEventsTotal)"
+    }
+} catch {
+    Write-Host "Diagnostico no disponible en $apiBase/api/diagnostics/status."
 }
 
 Assert-HttpOk "Consola" "http://localhost:5173"

@@ -23,6 +23,8 @@ trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
   del acceso de agente, limites de payload, forwarded headers configurables y
   validacion de configuracion insegura.
 - CI con pruebas PostgreSQL obligatorias, auditorias de dependencias y Gitleaks.
+- Observabilidad demo: health, diagnostico gated, conteos operativos y
+  `X-Request-ID`.
 
 ## Fuera de alcance
 
@@ -70,6 +72,7 @@ La demo reproducible se levanta con scripts PowerShell:
 ```powershell
 .\scripts\demo\start-demo.ps1
 .\scripts\demo\check-demo.ps1
+.\scripts\demo\show-demo-status.ps1
 ```
 
 Documentacion:
@@ -148,6 +151,7 @@ conversacion activa tras recargar. Esto es conveniencia local, no seguridad.
 - [Dependency and secret hardening](docs/dependency-secret-hardening.md)
 - [Demo local/LAN](docs/demo-runbook.md)
 - [HTTPS and forwarded headers](docs/https-forwarded-headers.md)
+- [Observability demo](docs/observability-demo.md)
 - [Checklist de presentacion demo](docs/demo-presentation-checklist.md)
 - [Linea base de seguridad y privacidad](docs/privacy-security-baseline.md)
 - [ADR 0001 - Arquitectura inicial](docs/adr/0001-architecture.md)
