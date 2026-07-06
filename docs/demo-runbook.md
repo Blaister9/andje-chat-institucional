@@ -53,17 +53,24 @@ Estos valores son solo demo/dev. No son autenticacion institucional.
 ## Guion paso a paso
 
 1. Abrir `http://localhost:5174`.
-2. Iniciar chat como `Ciudadano Demo`.
-3. Enviar `Consulta demo institucional`.
-4. Abrir `http://localhost:5173`.
-5. Iniciar sesion como `Funcionario Demo` con codigo `andje-agent-local`.
-6. Seleccionar la conversacion en cola.
-7. Responder `Respuesta demo del funcionario`.
-8. Confirmar que el widget recibe la respuesta.
-9. Cerrar la conversacion desde consola.
-10. Confirmar que el widget queda cerrado y ofrece nueva conversacion.
-11. Mostrar auditoria tecnica con consulta SQL.
-12. Mostrar estado operativo con `.\scripts\demo\show-demo-status.ps1`.
+2. Abrir `http://localhost:5173`.
+3. Iniciar sesion como `Funcionario Demo` con codigo `andje-agent-local`.
+4. Mostrar el dashboard operativo y los filtros de la cola.
+5. Ir a `Configuracion`.
+6. Crear respuesta rapida `Saludo demo` con cuerpo
+   `Hola, con gusto te orientamos.`.
+7. Volver a `Atencion`.
+8. En el widget, iniciar chat como `Ciudadano Demo UX`.
+9. Enviar `Consulta demo consola`.
+10. Confirmar que aparece en cola y seleccionar la conversacion.
+11. Insertar la respuesta rapida y enviar respuesta.
+12. Agregar nota interna `Nota interna de seguimiento`.
+13. Asignar etiqueta `Seguimiento`.
+14. Confirmar que la nota solo aparece en consola.
+15. Cerrar la conversacion desde consola.
+16. Confirmar que el widget recibe la respuesta y el cierre.
+17. Mostrar auditoria tecnica con consulta SQL.
+18. Mostrar estado operativo con `.\scripts\demo\show-demo-status.ps1`.
 
 ## Consultar auditoria
 
@@ -177,6 +184,8 @@ Riesgos LAN:
   `Diagnostics:Enabled=true`.
 - Consola o widget no abren: revisar `docker compose logs console widget`.
 - Login falla: verificar `ANDJE_AGENT_DEV_CODE` o usar `andje-agent-local`.
+- Respuestas rapidas o etiquetas no aparecen: reiniciar API para aplicar
+  migraciones y validar logs de `api`.
 - LAN no conecta: revisar firewall, IP local y `DEMO_ALLOWED_ORIGINS`.
 - CORS bloquea LAN: agregar origen exacto, nunca wildcard.
 
@@ -203,3 +212,5 @@ forwarded headers de proxies desconocidos.
 Detalles: [HTTPS and forwarded headers](https-forwarded-headers.md).
 
 Detalles de operacion demo: [Observability demo](observability-demo.md).
+
+Detalles de consola de producto: [Agent console product experience](agent-console-product-experience.md).

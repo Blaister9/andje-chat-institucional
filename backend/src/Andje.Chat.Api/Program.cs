@@ -1,4 +1,5 @@
 using System.Threading.RateLimiting;
+using Andje.Chat.Api.ConsoleApi;
 using Andje.Chat.Api.Contracts;
 using Andje.Chat.Api.Data;
 using Andje.Chat.Api.Diagnostics;
@@ -174,6 +175,7 @@ app.MapGet("/api/diagnostics/status", async (
         cancellationToken);
     return Results.Ok(status);
 });
+app.MapConsoleEndpoints();
 
 if (app.Environment.IsEnvironment("Test"))
 {

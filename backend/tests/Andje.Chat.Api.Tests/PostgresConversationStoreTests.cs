@@ -27,6 +27,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     public string SkipReason { get; private set; }
 
     public DbContextOptions<ChatDbContext> Options { get; }
+    public string ConnectionString { get; }
 
     public PostgresFixture()
     {
@@ -35,8 +36,9 @@ public sealed class PostgresFixture : IAsyncLifetime
         SkipReason =
             $"PostgreSQL no está disponible en localhost:{port}. Ejecute 'docker compose up -d db'.";
         _adminConnectionString = $"Host=localhost;Port={port};Database=postgres;Username=andje;Password={password};Timeout=3";
+        ConnectionString = $"Host=localhost;Port={port};Database={_testDatabase};Username=andje;Password={password};Timeout=3";
         Options = new DbContextOptionsBuilder<ChatDbContext>()
-            .UseNpgsql($"Host=localhost;Port={port};Database={_testDatabase};Username=andje;Password={password};Timeout=3")
+            .UseNpgsql(ConnectionString)
             .Options;
     }
 

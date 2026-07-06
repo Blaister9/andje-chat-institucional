@@ -4,7 +4,7 @@ Prototipo MVP de chat institucional para una entidad publica colombiana. Busca
 proveer una alternativa controlada a servicios externos tipo tawk.to, con
 trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 
-> Estado: fase 09 - demo preparada para proxy/HTTPS externo. Base
+> Estado: fase 11 - consola de agentes con experiencia de producto demo. Base
 > tecnica preliminar, alineada con buenas practicas y pendiente de revision
 > juridica y de seguridad institucional. No apto para produccion.
 
@@ -14,11 +14,14 @@ trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 - PostgreSQL 16 con EF Core + Npgsql.
 - Widget publico como Web Component TypeScript.
 - Consola interna React + Vite + TypeScript.
+- Consola de agentes con dashboard, cola filtrable, busqueda, respuestas
+  rapidas, notas internas y etiquetas visuales.
 - Conversaciones persistidas con estados `Pending`, `Active` y `Closed`.
 - Reanudacion de conversacion activa en el widget mediante `sessionStorage`.
 - Cierre desde consola, notificacion realtime y bloqueo de nuevos mensajes.
 - Acceso local de desarrollo para consola de agentes con token opaco temporal.
-- Auditoria minima: inicio, mensajes, activacion y cierre.
+- Auditoria minima: inicio, mensajes, activacion, cierre y acciones internas
+  de consola sin cuerpos de mensajes/notas/respuestas.
 - Controles de seguridad tecnica: headers HTTP, CORS explicito, rate limiting
   del acceso de agente, limites de payload, forwarded headers configurables y
   validacion de configuracion insegura.
@@ -32,7 +35,7 @@ trazabilidad, privacidad y una ruta futura hacia asistencia con IA controlada.
 - IA, RAG, resumenes o bots.
 - Adjuntos.
 - Departamentos, transferencia o asignacion explicita de agente.
-- Metricas, dashboard administrativo o reporterias.
+- Metricas productivas, dashboard administrativo avanzado o reporterias.
 - Retencion automatica y anonimizacion automatica.
 - Despliegue productivo o alta disponibilidad.
 
@@ -81,6 +84,9 @@ Documentacion:
 - [Checklist de presentacion](docs/demo-presentation-checklist.md)
 - Scripts: `scripts/demo/start-demo.ps1`, `scripts/demo/check-demo.ps1`,
   `scripts/demo/reset-demo-data.ps1`, `scripts/demo/stop-demo.ps1`
+
+La consola demo permite crear respuestas rapidas, agregar notas internas y
+asignar etiquetas. Las notas internas no se envian al widget ciudadano.
 
 Para LAN, use `.env.demo` local no versionado basado en `.env.demo.example` y
 defina `DEMO_API_URL` + `DEMO_ALLOWED_ORIGINS` con la IP del host. No use
@@ -152,6 +158,7 @@ conversacion activa tras recargar. Esto es conveniencia local, no seguridad.
 - [Demo local/LAN](docs/demo-runbook.md)
 - [HTTPS and forwarded headers](docs/https-forwarded-headers.md)
 - [Observability demo](docs/observability-demo.md)
+- [Agent console product experience](docs/agent-console-product-experience.md)
 - [Checklist de presentacion demo](docs/demo-presentation-checklist.md)
 - [Linea base de seguridad y privacidad](docs/privacy-security-baseline.md)
 - [ADR 0001 - Arquitectura inicial](docs/adr/0001-architecture.md)
